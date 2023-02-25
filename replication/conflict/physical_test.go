@@ -33,3 +33,27 @@ func TestPhysicalConcurrentEventsHappenBefore(t *testing.T) {
 		t.Errorf("c2 should happen before c3")
 	}
 }
+
+func TestResolveConcurrentEventsConflicts(t *testing.T) {
+	r := testCreatePhysicalClockConflictResolver()
+	c1 := r.testCreatePhysicalClockGivenTimestamp(20)
+
+	kv1 := KVFromParts[PhysicalClock]("key", "def", c1)
+	kv2 := KVFromParts[PhysicalClock]("key", "abc", c1)
+	kv, err := r.ResolveConcurrentEvents(kv1, kv2)
+	if err != nil {
+		t.Errorf("error should be nil")
+	}
+	if kv.Value != "def" {
+		t.Errorf("c1 should happen before c2")
+	}
+}
+
+func TestResolveConcurrentEventsNoConflicts(t *testing.T) {
+	r := testCreatePhysicalClockConflictResolver()
+
+	_, err := r.ResolveConcurrentEvents()
+	if err == nil {
+		t.Errorf("error should not be nil")
+	}
+}
