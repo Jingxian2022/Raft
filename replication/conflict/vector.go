@@ -157,6 +157,9 @@ func (v *VersionVectorConflictResolver) ZeroClock() VersionVectorClock {
 func (v *VersionVectorConflictResolver) ResolveConcurrentEvents(
 	conflicts ...*KV[VersionVectorClock]) (*KV[VersionVectorClock], error) {
 
+	if len(conflicts) == 0 {
+		return nil, errors.New("No conflicts")
+	}
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
 	maxValue := ""
 	maxClock := NewVersionVectorClock()
@@ -172,5 +175,5 @@ func (v *VersionVectorConflictResolver) ResolveConcurrentEvents(
 
 	resKV := KVFromParts(resKey, maxValue, maxClock)
 
-	return resKV, errors.New("No conflicts")
+	return resKV, nil
 }
