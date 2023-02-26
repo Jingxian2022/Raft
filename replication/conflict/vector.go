@@ -59,14 +59,7 @@ func (v VersionVectorClock) HappensBefore(other Clock) bool {
 		}
 	}
 
-	for k, val := range otherVector.vector {
-		counter, _ := v.vector[k]
-		if counter > val {
-			return false
-		}
-	}
-
-	return len(v.vector) == 0 || !v.Equals(other)
+	return (len(v.vector) == 0 && len(otherVector.vector) > 0) || !v.Equals(other)
 }
 
 // Version vector implementation of a ConflictResolver. Might need to keep some state in here
