@@ -51,14 +51,16 @@ func (v VersionVectorClock) Equals(other Clock) bool {
 func (v VersionVectorClock) HappensBefore(other Clock) bool {
 	otherVector := other.(VersionVectorClock)
 
+	flag := false
+
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
 	for k, val := range v.vector {
 		if otherVector.vector[k] < val {
 			return false
 		}
+		flag = flag || otherVector.vector[k] > val
 	}
 
-	flag := true
 	for k, val := range otherVector.vector {
 		flag = flag || v.vector[k] < val
 	}
