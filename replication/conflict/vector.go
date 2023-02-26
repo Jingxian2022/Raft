@@ -52,12 +52,20 @@ func (v VersionVectorClock) HappensBefore(other Clock) bool {
 	otherVector := other.(VersionVectorClock)
 
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
-	for k, v := range v.vector {
+	for k, val := range v.vector {
 		otherCounter, prs := otherVector.vector[k]
-		if !prs || otherCounter < v {
+		if !prs || otherCounter < val {
 			return false
 		}
 	}
+
+	for k, val := range otherVector.vector {
+		counter, _ := v.vector[k]
+		if counter >= val {
+			return false
+		}
+	}
+
 	return !v.Equals(other)
 }
 
@@ -107,7 +115,10 @@ func (v *VersionVectorConflictResolver) OnMessageReceive(clock VersionVectorCloc
 
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
 	v.mu.Lock()
-	v.vector[v.nodeID] = max(v.vector[v.nodeID], clock.vector[v.nodeID]) + 1
+	for k, val := range v.vector {
+		v.vector[k] = max(val, clock.vector[k])
+	}
+	v.vector[v.nodeID] = v.vector[v.nodeID] + 1
 	v.mu.Unlock()
 }
 
