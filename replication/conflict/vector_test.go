@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestNewVersionVectorClock(t *testing.T) {
+	r := NewVersionVectorConflictResolver()
+	r.vector[0] = 1
+	r.vector[1] = 2
+
+	newClock := r.NewClock()
+	if newClock.vector[0] != 1 || newClock.vector[1] != 2 {
+		t.Errorf("VersionVectorClock's initialization is incorrect")
+	}
+}
+
 func TestVectorConcurrentEventsDoNotHappenBefore(t *testing.T) {
 	v1 := NewVersionVectorClock()
 	v2 := NewVersionVectorClock()
