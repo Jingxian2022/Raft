@@ -1,6 +1,7 @@
 package conflict
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"modist/orchestrator/node"
@@ -51,7 +52,13 @@ func (v VersionVectorClock) HappensBefore(other Clock) bool {
 	otherVector := other.(VersionVectorClock)
 
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
-	return false
+	for k, v := range v.vector {
+		otherCounter, prs := otherVector.vector[k]
+		if !prs || otherCounter < v {
+			return false
+		}
+	}
+	return !v.Equals(other)
 }
 
 // Version vector implementation of a ConflictResolver. Might need to keep some state in here
@@ -99,12 +106,18 @@ func max[T constraints.Ordered](x T, y T) T {
 func (v *VersionVectorConflictResolver) OnMessageReceive(clock VersionVectorClock) {
 
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
+	v.mu.Lock()
+	v.vector[v.nodeID] = max(v.vector[v.nodeID], clock.vector[v.nodeID]) + 1
+	v.mu.Unlock()
 }
 
 // OnMessageSend is called before an RPC is sent to any other node. The version vector should be
 // incremented for the local node.
 func (v *VersionVectorConflictResolver) OnMessageSend() {
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
+	v.mu.Lock()
+	v.vector[v.nodeID] += 1
+	v.mu.Unlock()
 }
 
 func (v *VersionVectorConflictResolver) OnEvent() {
@@ -117,8 +130,12 @@ func (v *VersionVectorConflictResolver) OnEvent() {
 // returning it.
 func (v *VersionVectorConflictResolver) NewClock() VersionVectorClock {
 
+	clock := NewVersionVectorClock()
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
-	return VersionVectorClock{}
+	for k, v := range v.vector {
+		clock.vector[k] = v
+	}
+	return clock
 }
 
 // ZeroClock returns a clock that happens before (or is concurrent with) all other clocks.
@@ -141,5 +158,19 @@ func (v *VersionVectorConflictResolver) ResolveConcurrentEvents(
 	conflicts ...*KV[VersionVectorClock]) (*KV[VersionVectorClock], error) {
 
 	// TODO(students): [Clocks & Conflict Resolution] Implement me!
-	return nil, nil
+	maxValue := ""
+	maxClock := NewVersionVectorClock()
+	resKey := ""
+
+	for _, v := range conflicts {
+		resKey = v.Key
+		maxValue = max(v.Value, maxValue)
+		for k, val := range v.Clock.vector {
+			maxClock.vector[k] = max(maxClock.vector[k], val)
+		}
+	}
+
+	resKV := KVFromParts(resKey, maxValue, maxClock)
+
+	return resKV, errors.New("No conflicts")
 }
