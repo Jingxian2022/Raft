@@ -217,14 +217,17 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 
 	s.log.Printf("HandlePeerRead: received request for key %s", requestKey)
 	// TODO(students): [Leaderless] Implement me!
-	tx := s.localStore.BeginTx(true) //???????
-	defer tx.Commit()
+	tx := s.localStore.BeginTx(true)
 
 	kv, found := tx.Get(requestKey)
+	if kv == nil {
+		return nil, nil
+	}
 	if !found {
 		peerReadReplyStruct := pb.HandlePeerReadReply{Found: false}
 		return &peerReadReplyStruct, errors.New("no value found [HandlePeerRead]")
 	}
+	defer tx.Commit()
 	resovableKV := kv.Proto()
 	peerReadReplyStruct := pb.HandlePeerReadReply{Found: found, ResolvableKv: resovableKV}
 	return &peerReadReplyStruct, nil
@@ -262,7 +265,7 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 
 	retryFunc := func() error {
 		reply, err := c.HandlePeerRead(ctx, structedInKey)
-		if err == nil {
+		if reply != nil {
 			readReply = reply
 		}
 		return err
@@ -270,6 +273,9 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 	err := s.withRetries(retryFunc, 3)
 	if err != nil {
 		return nil, errors.New("HandlePeerRead error")
+	}
+	if readReply == nil {
+		return new(conflict.KV[T]), nil
 	}
 	myKv := readReply.GetResolvableKv()
 	newClock := s.conflictResolver.NewClock()
@@ -303,13 +309,14 @@ func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[
 				s.onMessageSend()
 
 				mykv := latestKV.Proto()
+				c.HandlePeerWrite(ctx, mykv)
 
-				retryFunc := func() error {
-					_, err := c.HandlePeerWrite(ctx, mykv)
-					return err
-				}
+				// retryFunc := func() error {
+				// 	_, err := c.HandlePeerWrite(ctx, mykv)
+				// 	return err
+				// }
 
-				s.withRetries(retryFunc, 3)
+				// s.withRetries(retryFunc, 3)
 			}()
 		}
 	}
