@@ -45,7 +45,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 	curKV, ok := tx.Get(newKV.Key)
 
 	if !ok {
-		s.log.Printf("safelyUpdateKey no such key")
+		//s.log.Printf("safelyUpdateKey no such key")
 		tx.Put(newKV.Key, newKV)
 		return true, newKV, nil
 	}
@@ -55,12 +55,12 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	// no need to update
 	if newClock.HappensBefore(curClock) {
-		s.log.Printf("safelyUpdateKey updated = false, curClock: %v, newClock: %v", curClock, newClock)
+		//s.log.Printf("safelyUpdateKey updated = false, curClock: %v, newClock: %v", curClock, newClock)
 		return false, curKV, nil
 	}
 
 	if curClock.HappensBefore(newClock) {
-		s.log.Printf("safelyUpdateKey updated without conflict")
+		//s.log.Printf("safelyUpdateKey updated without conflict")
 		tx.Put(newKV.Key, newKV)
 		return true, newKV, nil
 	}
@@ -71,7 +71,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 	if err != nil {
 		return false, nil, err
 	}
-	s.log.Printf("safelyUpdateKey resolve conflict")
+	//s.log.Printf("safelyUpdateKey resolve conflict")
 
 	tx.Put(newKV.Key, updatedKV)
 
@@ -123,7 +123,7 @@ func (s *State[T]) HandlePeerWrite(ctx context.Context, r *pb.ResolvableKV) (*pb
 	// TODO(students): [Leaderless] Implement me!
 	updated, updatedKV, err := s.safelyUpdateKey(newKV)
 
-	s.log.Printf("node %d's HandlePeerWrite: updated = %t", s.node.ID, updated)
+	//s.log.Printf("node %d's HandlePeerWrite: updated = %t", s.node.ID, updated)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 		return nil, nil
 	}
 
-	s.log.Printf("result of HandlePeerRead: %v", myKv)
+	//s.log.Printf("result of HandlePeerRead: %v", myKv)
 	return conflict.KVFromProto[T](myKv), nil
 
 }
@@ -372,14 +372,14 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 			return err
 		}
 
-		s.log.Printf("GetReplicatedKey: getKV: %v", getKV)
+		//s.log.Printf("GetReplicatedKey: getKV: %v", getKV)
 
 		mutex.Lock()
 		KVMap[replicaNodeID] = getKV
 		if getKV != nil {
-			s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
+			//s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
 		} else {
-			s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
+			//s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
 		}
 		mutex.Unlock()
 
@@ -395,7 +395,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	for _, kv := range KVMap {
 		// KVMap may had nil values
 		if kv != nil {
-			s.log.Printf("GetReplicatedKey: kv in kvs: %v", kv)
+			//s.log.Printf("GetReplicatedKey: kv in kvs: %v", kv)
 			kvs = append(kvs, kv)
 		}
 	}
@@ -409,7 +409,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
 
 	if err == nil {
-		s.log.Printf("performing read repair...")
+		//s.log.Printf("performing read repair...")
 		s.PerformReadRepair(ctx, latestKV, KVMap)
 	} else {
 		return new(pb.GetReply), errors.New("No KV is read")
