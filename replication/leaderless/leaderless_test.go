@@ -57,6 +57,46 @@ func TestBasicLeaderless(t *testing.T) {
 	}
 }
 
+func TestHandlePeerRead(t *testing.T) {
+	nodes := node.Create([]string{"localhost:1237", "localhost:1238", "localhost:1239"})
+	var replicators []*State[conflict.PhysicalClock]
+
+	for _, node := range nodes {
+		replicator := Configure[conflict.PhysicalClock](
+			testCreatePhysicalClockArgs(node, 2, 2),
+		)
+		replicators = append(replicators, replicator)
+	}
+
+	key := "foo"
+	value := "bar"
+
+	firstReplicator := replicators[0]
+
+	response, err := firstReplicator.ReplicateKey(context.Background(), &pb.PutRequest{
+		Key: key, Value: value, Clock: &pb.Clock{Timestamp: 1}})
+	if err != nil {
+		t.Fatalf("Error while replicating key to node 0: %v", err)
+	}
+
+	// log.Printf("[HandlePeerRead] response clock is %v", response.GetClock())
+	// reply, err := firstReplicator.HandlePeerRead(context.Background(), &pb.Key{Key: key, Clock: &pb.Clock{Timestamp: 1}})
+	// if err != nil {
+	// 	t.Fatalf("[HandlePeerRead] Error while getting key from node 1: %v", err)
+	// }
+	// log.Printf(reply.String())
+
+	log.Printf("[readFromNode] response clock is %v", response.GetClock())
+	kv, err := firstReplicator.readFromNode(context.Background(), key, firstReplicator.node.ID, firstReplicator.conflictResolver.NewClock())
+	if err != nil {
+		t.Fatalf("[readFromNode] Error while getting key from node 1: %v", err)
+	}
+	if kv.Value != value {
+		t.Fatal("[readFromNode] Error: getting wrong value")
+	}
+
+}
+
 // Read repair brings nodes that have falled behind up-to-date when we do reads. To test that read
 // repair works, we can intentionally make a node x fall behind (partition it), do quorum reads
 // involving x, and then read only from x. We then make sure that x is as up-to-date as any other

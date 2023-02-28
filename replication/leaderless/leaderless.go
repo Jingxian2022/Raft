@@ -219,13 +219,13 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 	// TODO(students): [Leaderless] Implement me!
 	tx := s.localStore.BeginTx(true)
 
-	kv, found := tx.Get(requestKey)
+	kv, found := s.localStore.Get(requestKey)
 	if kv == nil {
 		return nil, nil
 	}
 	if !found {
-		peerReadReplyStruct := pb.HandlePeerReadReply{Found: false}
-		return &peerReadReplyStruct, errors.New("no value found [HandlePeerRead]")
+		peerReadReplyStruct0 := pb.HandlePeerReadReply{Found: false}
+		return &peerReadReplyStruct0, errors.New("no value found [HandlePeerRead]")
 	}
 	defer tx.Commit()
 	resovableKV := kv.Proto()
@@ -309,14 +309,14 @@ func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[
 				s.onMessageSend()
 
 				mykv := latestKV.Proto()
-				c.HandlePeerWrite(ctx, mykv)
+				// c.HandlePeerWrite(ctx, mykv)
 
-				// retryFunc := func() error {
-				// 	_, err := c.HandlePeerWrite(ctx, mykv)
-				// 	return err
-				// }
+				retryFunc := func() error {
+					_, err := c.HandlePeerWrite(ctx, mykv)
+					return err
+				}
 
-				// s.withRetries(retryFunc, 3)
+				s.withRetries(retryFunc, 3)
 			}()
 		}
 	}
