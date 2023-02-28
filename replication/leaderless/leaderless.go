@@ -276,11 +276,14 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 	if err != nil {
 		return nil, errors.New("HandlePeerRead error")
 	}
-	if readReply == nil {
-		return new(conflict.KV[T]), nil
-	}
+	//if readReply == nil {
+	//	return new(conflict.KV[T]), nil
+	//}
 	myKv := readReply.GetResolvableKv()
 	newClock := s.conflictResolver.NewClock()
+	if myKv == nil {
+		return nil, nil
+	}
 	return &conflict.KV[T]{Key: myKv.Key, Value: myKv.Value, Clock: newClock}, nil
 
 }
@@ -357,10 +360,15 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	// KVMap := M{mymap: make(map[uint64]*conflict.KV[T])}
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, key, replicaNodeID, clientClock)
-		mutex.Lock()
-		KVMap[replicaNodeID] = getKV
-		mutex.Unlock()
-		return err
+		if err != nil {
+			return err
+		}
+		if getKV != nil {
+			mutex.Lock()
+			KVMap[replicaNodeID] = getKV
+			mutex.Unlock()
+		}
+		return nil
 	}
 	err := s.dispatchToPeers(ctx, R, readFromNodeFunc) //parallel
 	if err != nil {
