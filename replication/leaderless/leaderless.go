@@ -223,7 +223,7 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 
 	kv, found := s.localStore.Get(requestKey)
 	if kv == nil {
-		return nil, nil
+		return new(pb.HandlePeerReadReply), nil
 	}
 	if !found {
 		peerReadReplyStruct0 := pb.HandlePeerReadReply{Found: false}
@@ -364,7 +364,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	}
 	err := s.dispatchToPeers(ctx, R, readFromNodeFunc) //parallel
 	if err != nil {
-		return nil, errors.New("GetReplicatedKey error")
+		return new(pb.GetReply), errors.New("GetReplicatedKey error")
 	}
 	var kvs []*conflict.KV[T]
 	for _, kv := range KVMap {
@@ -377,7 +377,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	if err == nil {
 		s.PerformReadRepair(ctx, latestKV, KVMap)
 	} else {
-		return nil, errors.New("No KV is read")
+		return new(pb.GetReply), errors.New("No KV is read")
 	}
 	reply := pb.GetReply{Value: latestKV.Value, Clock: clientClock.Proto()}
 	return &reply, nil
