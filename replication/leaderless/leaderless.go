@@ -40,31 +40,26 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	// TODO(students): [Leaderless] Implement me!
 	tx := s.localStore.BeginTx(false)
+	defer tx.Commit()
+
 	curKV, ok := tx.Get(newKV.Key)
-	if !ok {
-		tx.Commit()
-		return false, nil, errors.New("no such key")
-	}
 
 	curClock := curKV.Clock
 	newClock := newKV.Clock
 
 	// no need to update
 	if newClock.HappensBefore(curClock) {
-		tx.Commit()
 		return false, curKV, nil
 	}
 
-	if curClock.HappensBefore(newClock) {
+	if !ok || curClock.HappensBefore(newClock) {
 		tx.Put(newKV.Key, newKV)
-		tx.Commit()
 		return true, newKV, nil
 	}
 
 	// conflicts
 	updatedKV, err := s.conflictResolver.ResolveConcurrentEvents(curKV, newKV)
 	tx.Put(newKV.Key, updatedKV)
-	tx.Commit()
 
 	if err != nil {
 		return false, nil, err
@@ -87,8 +82,10 @@ func (s *State[T]) getUpToDateKV(key string, minimumClock T) (kv *conflict.KV[T]
 	curKV, ok := s.localStore.Get(key)
 
 	// cannot find
-	if !ok || curKV.Clock.HappensBefore(minimumClock) {
+	if !ok {
 		return nil, false
+	} else if curKV.Clock.HappensBefore(minimumClock) {
+		return nil, true
 	}
 
 	return curKV, true
