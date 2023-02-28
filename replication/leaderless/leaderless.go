@@ -147,6 +147,7 @@ func (s *State[T]) HandlePeerWrite(ctx context.Context, r *pb.ResolvableKV) (*pb
 // accept your write?
 func (s *State[T]) replicateToNode(ctx context.Context, kv *conflict.KV[T], replicaNodeID uint64) error {
 	s.log.Printf("write to node being called for node %d", replicaNodeID)
+	s.log.Printf("current node: %d", s.node.ID)
 
 	// TODO(students): [Leaderless] Implement me!
 	conn := s.node.PeerConns[uint64(replicaNodeID)]
@@ -217,22 +218,21 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 	requestClock := conflict.ClockFromProto[T](request.GetClock())
 	s.onMessageReceived(requestClock) // clock: onMsgRcv
 
-	s.log.Printf("HandlePeerRead: received request for key %s", requestKey)
+	s.log.Printf("Node %d's HandlePeerRead: received request for key %s", s.node.ID, requestKey)
 	// TODO(students): [Leaderless] Implement me!
 	tx := s.localStore.BeginTx(true)
-
-	kv, found := s.localStore.Get(requestKey)
-	if kv == nil {
-		return new(pb.HandlePeerReadReply), nil
-	}
-	if !found {
-		peerReadReplyStruct0 := pb.HandlePeerReadReply{Found: false}
-		return &peerReadReplyStruct0, errors.New("no value found [HandlePeerRead]")
-	}
 	defer tx.Commit()
-	resovableKV := kv.Proto()
-	peerReadReplyStruct := pb.HandlePeerReadReply{Found: found, ResolvableKv: resovableKV}
-	return &peerReadReplyStruct, nil
+
+	reply := pb.HandlePeerReadReply{}
+
+	kv, found := s.getUpToDateKV(requestKey, requestClock)
+
+	reply.Found = found
+	if found {
+		reply.ResolvableKv = kv.Proto()
+	}
+
+	return &reply, nil
 }
 
 // readFromNode performs a remote read from the specified node, with 3 retries.
@@ -256,22 +256,26 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 // .Proto() function.
 func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID uint64, clientClock T) (*conflict.KV[T], error) {
 	s.log.Printf("read from node being called for node %d", replicaNodeID)
-
+	s.log.Printf("current node: %d", s.node.ID)
 	// TODO(students): [Leaderless] Implement me!
 
 	structedInKey := &pb.Key{Key: key, Clock: clientClock.Proto()}
+
 	clientConn := s.node.PeerConns[replicaNodeID]
 	c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
-	var readReply *pb.HandlePeerReadReply
-	s.onMessageSend()
+
+	readReply := pb.HandlePeerReadReply{}
 
 	retryFunc := func() error {
+		s.onMessageSend()
 		reply, err := c.HandlePeerRead(ctx, structedInKey)
-		if reply != nil {
-			readReply = reply
+		if err == nil {
+			readReply.Found = reply.Found
+			readReply.ResolvableKv = reply.GetResolvableKv()
 		}
 		return err
 	}
+
 	err := s.withRetries(retryFunc, 3)
 	if err != nil {
 		return nil, errors.New("HandlePeerRead error")
@@ -280,11 +284,12 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 	//	return new(conflict.KV[T]), nil
 	//}
 	myKv := readReply.GetResolvableKv()
-	newClock := s.conflictResolver.NewClock()
 	if myKv == nil {
 		return nil, nil
 	}
-	return &conflict.KV[T]{Key: myKv.Key, Value: myKv.Value, Clock: newClock}, nil
+
+	s.log.Printf("result of HandlePeerRead: %s", myKv.Value)
+	return &conflict.KV[T]{Key: myKv.Key, Value: myKv.Value, Clock: clientClock}, nil
 
 }
 
@@ -304,11 +309,14 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[T], kvPairs map[uint64]*conflict.KV[T]) {
 
 	// TODO(students): [Leaderless] Implement me!
-	latestKey := latestKV.Key
+	var wg sync.WaitGroup
 	for replicaNodeID, kv := range kvPairs {
-		if kv.Key == latestKey {
-			go func() {
 
+		if !kv.Equals(latestKV) {
+			s.log.Printf("updating node %d", replicaNodeID)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
 				clientConn := s.node.PeerConns[replicaNodeID]
 				c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
 				s.onMessageSend()
@@ -316,15 +324,11 @@ func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[
 				mykv := latestKV.Proto()
 				// c.HandlePeerWrite(ctx, mykv)
 
-				retryFunc := func() error {
-					_, err := c.HandlePeerWrite(ctx, mykv)
-					return err
-				}
-
-				s.withRetries(retryFunc, 3)
+				c.HandlePeerWrite(ctx, mykv)
 			}()
 		}
 	}
+	wg.Wait()
 }
 
 // GetReplicatedKey performs a quorum read of the system, also performing read repair.
@@ -360,29 +364,44 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	// KVMap := M{mymap: make(map[uint64]*conflict.KV[T])}
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, key, replicaNodeID, clientClock)
+		// getKV may equal to nil
+
 		if err != nil {
 			return err
 		}
+
+		mutex.Lock()
+		KVMap[replicaNodeID] = getKV
 		if getKV != nil {
-			mutex.Lock()
-			KVMap[replicaNodeID] = getKV
-			mutex.Unlock()
+			s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
+		} else {
+			s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
 		}
+		mutex.Unlock()
+
 		return nil
 	}
 	err := s.dispatchToPeers(ctx, R, readFromNodeFunc) //parallel
 	if err != nil {
 		return new(pb.GetReply), errors.New("GetReplicatedKey error")
 	}
+
+	// used to resolve conflict
 	var kvs []*conflict.KV[T]
 	for _, kv := range KVMap {
-		kvs = append(kvs, kv)
+		// KVMap may had nil values
+		if kv != nil {
+			kvs = append(kvs, kv)
+		}
 	}
+
 	if len(kvs) == 0 {
 		return &pb.GetReply{Value: "", Clock: clientClock.Proto()}, nil
 	}
+
 	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
 	if err == nil {
+		s.log.Printf("performing read repair...")
 		s.PerformReadRepair(ctx, latestKV, KVMap)
 	} else {
 		return new(pb.GetReply), errors.New("No KV is read")
