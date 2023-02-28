@@ -217,15 +217,16 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 
 	s.log.Printf("HandlePeerRead: received request for key %s", requestKey)
 	// TODO(students): [Leaderless] Implement me!
-	// tx := s.localStore.BeginTx(true) //???????
-	kv, found := s.localStore.Get(requestKey)
+	tx := s.localStore.BeginTx(true) //???????
+	defer tx.Commit()
+
+	kv, found := tx.Get(requestKey)
 	if !found {
 		peerReadReplyStruct := pb.HandlePeerReadReply{Found: false}
-		return &peerReadReplyStruct, errors.New("No value found [HandlePeerRead]")
+		return &peerReadReplyStruct, errors.New("no value found [HandlePeerRead]")
 	}
 	resovableKV := kv.Proto()
 	peerReadReplyStruct := pb.HandlePeerReadReply{Found: found, ResolvableKv: resovableKV}
-	// tx.Commit()
 	return &peerReadReplyStruct, nil
 }
 
