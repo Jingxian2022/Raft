@@ -314,29 +314,22 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[T], kvPairs map[uint64]*conflict.KV[T]) {
 
 	// TODO(students): [Leaderless] Implement me!
-	//var wg sync.WaitGroup
+	var wg sync.WaitGroup
 	for replicaNodeID, kv := range kvPairs {
 
 		if !kv.Equals(latestKV) {
-			s.log.Printf("updating node %d", replicaNodeID)
-			//wg.Add(1)
-			//go func() {
-			//defer wg.Done()
+			//s.log.Printf("updating node %d", replicaNodeID)
 			clientConn := s.node.PeerConns[replicaNodeID]
 			c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
-			s.onMessageSend()
-
-			mykv := latestKV.Proto()
-
-			retryFunc := func() error {
-				_, err := c.HandlePeerWrite(ctx, mykv)
-				return err
-			}
-			s.withRetries(retryFunc, 3)
-			//}()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.onMessageSend()
+				c.HandlePeerWrite(ctx, latestKV.Proto())
+			}()
 		}
 	}
-	//wg.Wait()
+	wg.Wait()
 }
 
 // GetReplicatedKey performs a quorum read of the system, also performing read repair.
