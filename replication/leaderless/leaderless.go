@@ -40,7 +40,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	// TODO(students): [Leaderless] Implement me!
 	tx := s.localStore.BeginTx(false)
-	curKV, ok := tx.Get(newKV.Key);
+	curKV, ok := tx.Get(newKV.Key)
 	if !ok {
 		tx.Commit()
 		return false, nil, errors.New("no such key")
@@ -183,7 +183,7 @@ func (s *State[T]) ReplicateKey(ctx context.Context, kv *pb.PutRequest) (*pb.Put
 	s.dispatchToPeers(ctx, s.W, func(ctx context.Context, replicaNodeID uint64) error {
 		return s.replicateToNode(ctx, newKV, replicaNodeID)
 	})
-	
+
 	reply := pb.PutReply{}
 	reply.Clock = kv.GetClock()
 
@@ -215,10 +215,10 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 	s.log.Printf("HandlePeerRead: received request for key %s", requestKey)
 	// TODO(students): [Leaderless] Implement me!
 	// tx := s.localStore.BeginTx(true) //???????
-	kv, found := s.getUpToDateKV(requestKey, requestClock)
+	kv, found := s.localStore.Get(requestKey)
 	if !found {
 		peerReadReplyStruct := pb.HandlePeerReadReply{Found: false}
-		return &peerReadReplyStruct, errors.New("no value found")
+		return &peerReadReplyStruct, errors.New("No value found [HandlePeerRead]")
 	}
 	resovableKV := kv.Proto()
 	peerReadReplyStruct := pb.HandlePeerReadReply{Found: found, ResolvableKv: resovableKV}
