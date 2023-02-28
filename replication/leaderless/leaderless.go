@@ -152,7 +152,7 @@ func (s *State[T]) HandlePeerWrite(ctx context.Context, r *pb.ResolvableKV) (*pb
 // accept your write?
 func (s *State[T]) replicateToNode(ctx context.Context, kv *conflict.KV[T], replicaNodeID uint64) error {
 	s.log.Printf("write to node being called for node %d", replicaNodeID)
-	s.log.Printf("current node: %d", s.node.ID)
+	//s.log.Printf("current node: %d", s.node.ID)
 
 	// TODO(students): [Leaderless] Implement me!
 	conn := s.node.PeerConns[uint64(replicaNodeID)]
@@ -225,16 +225,14 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 
 	s.log.Printf("Node %d's HandlePeerRead: received request for key %s", s.node.ID, requestKey)
 	// TODO(students): [Leaderless] Implement me!
-	tx := s.localStore.BeginTx(true)
-	defer tx.Commit()
-
-	reply := pb.HandlePeerReadReply{}
+	var reply pb.HandlePeerReadReply
 
 	kv, found := s.getUpToDateKV(requestKey, requestClock)
 
-	reply.Found = found
-	if found {
-		reply.ResolvableKv = kv.Proto()
+	if found && kv != nil {
+		reply = pb.HandlePeerReadReply{Found: true, ResolvableKv: kv.Proto()}
+	} else {
+		reply = pb.HandlePeerReadReply{Found: false, ResolvableKv: nil}
 	}
 
 	return &reply, nil
@@ -320,14 +318,15 @@ func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[
 
 		if !kv.Equals(latestKV) {
 			//s.log.Printf("updating node %d", replicaNodeID)
-			clientConn := s.node.PeerConns[replicaNodeID]
-			c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
+
 			wg.Add(1)
-			go func() {
+			go func(replicaNodeID uint64) {
 				defer wg.Done()
+				clientConn := s.node.PeerConns[replicaNodeID]
+				c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
 				s.onMessageSend()
-				c.HandlePeerWrite(ctx, latestKV.Proto())
-			}()
+				_, _ = c.HandlePeerWrite(ctx, latestKV.Proto())
+			}(replicaNodeID)
 		}
 	}
 	wg.Wait()
