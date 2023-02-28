@@ -150,3 +150,37 @@ func TestBasicReadRepair(t *testing.T) {
 		}
 	}
 }
+
+func TestReadRepairAllEventsConcurrent(t *testing.T) {
+	nodes := node.Create([]string{"localhost:4001", "localhost:4002", "localhost:4003"})
+	var replicators []*State[conflict.PhysicalClock]
+
+	for _, node := range nodes {
+		replicator := Configure[conflict.PhysicalClock](testCreatePhysicalClockArgs(node, 1, 3))
+		replicators = append(replicators, replicator)
+	}
+
+	for i := 0; i < 3; i++ {
+		pr := &pb.PutRequest{Key: "k", Value: strconv.Itoa(i), Clock: &pb.Clock{Timestamp: 1}}
+		replicators[i].ReplicateKey(context.Background(), pr)
+	}
+
+	replicators[1].replicaChooser = func(numReplicas int, exclude []uint64) ([]uint64, error) {
+		return []uint64{replicators[0].node.ID, replicators[2].node.ID}, nil
+	}
+
+	for i := 0; i < 3; i++ {
+		log.Printf("requesting key")
+		replicators[1].GetReplicatedKey(context.Background(),
+			&pb.GetRequest{Key: "k", Metadata: &pb.GetMetadata{Clock: &pb.Clock{Timestamp: 1}}})
+	}
+
+	for i := 0; i < 3; i++ {
+		got, ok := replicators[i].localStore.Get("k")
+		if !ok {
+			t.Errorf("key k not found in local store")
+		} else if got.Value != "2" {
+			t.Errorf("value mismatch: expected 2 for key k, got %s", got.Value)
+		}
+	}
+}

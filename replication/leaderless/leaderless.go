@@ -55,7 +55,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	// no need to update
 	if newClock.HappensBefore(curClock) {
-		s.log.Printf("safelyUpdateKey updated = false")
+		s.log.Printf("safelyUpdateKey updated = false, curClock: %v, newClock: %v", curClock, newClock)
 		return false, curKV, nil
 	}
 
@@ -293,8 +293,8 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 		return nil, nil
 	}
 
-	s.log.Printf("result of HandlePeerRead: %s", myKv.Value)
-	return &conflict.KV[T]{Key: myKv.Key, Value: myKv.Value, Clock: clientClock}, nil
+	s.log.Printf("result of HandlePeerRead: %v", myKv)
+	return conflict.KVFromProto[T](myKv), nil
 
 }
 
@@ -314,6 +314,7 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[T], kvPairs map[uint64]*conflict.KV[T]) {
 
 	// TODO(students): [Leaderless] Implement me!
+	s.log.Printf("PerformReadRepair clock = %v", latestKV.Clock)
 	var wg sync.WaitGroup
 	for replicaNodeID, kv := range kvPairs {
 
@@ -371,6 +372,8 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 			return err
 		}
 
+		s.log.Printf("GetReplicatedKey: getKV: %v", getKV)
+
 		mutex.Lock()
 		KVMap[replicaNodeID] = getKV
 		if getKV != nil {
@@ -392,6 +395,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	for _, kv := range KVMap {
 		// KVMap may had nil values
 		if kv != nil {
+			s.log.Printf("GetReplicatedKey: kv in kvs: %v", kv)
 			kvs = append(kvs, kv)
 		}
 	}
@@ -400,7 +404,10 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		return nil, errors.New("reading non-existent key")
 	}
 
+	s.log.Printf("GetReplicatedKey: kvs: %v", kvs)
+
 	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
+
 	if err == nil {
 		s.log.Printf("performing read repair...")
 		s.PerformReadRepair(ctx, latestKV, KVMap)
