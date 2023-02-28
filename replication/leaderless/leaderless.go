@@ -320,15 +320,14 @@ func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[
 
 		if !kv.Equals(latestKV) {
 			//s.log.Printf("updating node %d", replicaNodeID)
-
+			clientConn := s.node.PeerConns[replicaNodeID]
+			c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
 			wg.Add(1)
-			go func(nodeID uint64) {
+			go func() {
 				defer wg.Done()
 				s.onMessageSend()
-				clientConn := s.node.PeerConns[nodeID]
-				c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
 				c.HandlePeerWrite(ctx, latestKV.Proto())
-			}(replicaNodeID)
+			}()
 		}
 	}
 	wg.Wait()
