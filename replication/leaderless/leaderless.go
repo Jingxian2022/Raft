@@ -352,11 +352,11 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	R := s.R
 	key := r.Key
 	type M struct {
-		mu    sync.Mutex                 // lock for entry map
-		mymap map[uint64]*conflict.KV[T] // entry map
+		mu    sync.Mutex
+		mymap map[uint64]*conflict.KV[T]
 	}
 	// KVMap := make(map[uint64]*conflict.KV[T])
-	KVMap := M{}
+	KVMap := M{mymap: make(map[uint64]*conflict.KV[T])}
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, key, replicaNodeID, clientClock)
 		KVMap.mu.Lock()
@@ -371,6 +371,9 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	var kvs []*conflict.KV[T]
 	for _, kv := range KVMap.mymap {
 		kvs = append(kvs, kv)
+	}
+	if len(kvs) == 0 {
+		return &pb.GetReply{Value: "", Clock: clientClock.Proto()}, nil
 	}
 	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
 	if err == nil {
