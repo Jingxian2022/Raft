@@ -44,6 +44,11 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	curKV, ok := tx.Get(newKV.Key)
 
+	if !ok {
+		tx.Put(newKV.Key, newKV)
+		return true, newKV, nil
+	}
+
 	curClock := curKV.Clock
 	newClock := newKV.Clock
 
@@ -52,20 +57,21 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 		return false, curKV, nil
 	}
 
-	if !ok || curClock.HappensBefore(newClock) {
+	if curClock.HappensBefore(newClock) {
 		tx.Put(newKV.Key, newKV)
 		return true, newKV, nil
 	}
 
 	// conflicts
 	updatedKV, err := s.conflictResolver.ResolveConcurrentEvents(curKV, newKV)
-	tx.Put(newKV.Key, updatedKV)
 
 	if err != nil {
 		return false, nil, err
 	}
 
-	return true, updatedKV, nil
+	tx.Put(newKV.Key, updatedKV)
+
+	return updatedKV.Value == newKV.Value, updatedKV, nil
 }
 
 // getUpToDateKV returns the KV associated with the key from the local store, but only if the one
