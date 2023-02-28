@@ -39,7 +39,38 @@ import (
 func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpToDateKV *conflict.KV[T], err error) {
 
 	// TODO(students): [Leaderless] Implement me!
-	return false, nil, errors.New("not implemented")
+	tx := s.localStore.BeginTx(false)
+	curKV, ok := tx.Get(newKV.Key);
+	if !ok {
+		tx.Commit()
+		return false, nil, errors.New("no such key")
+	}
+
+	curClock := curKV.Clock
+	newClock := newKV.Clock
+
+	// no need to update
+	if newClock.HappensBefore(curClock) {
+		tx.Commit()
+		return false, curKV, nil
+	}
+
+	if curClock.HappensBefore(newClock) {
+		tx.Put(newKV.Key, newKV)
+		tx.Commit()
+		return true, newKV, nil
+	}
+
+	// conflicts
+	updatedKV, err := s.conflictResolver.ResolveConcurrentEvents(curKV, newKV)
+	tx.Put(newKV.Key, updatedKV)
+	tx.Commit()
+
+	if err != nil {
+		return false, nil, err
+	}
+
+	return true, updatedKV, nil
 }
 
 // getUpToDateKV returns the KV associated with the key from the local store, but only if the one
@@ -53,7 +84,14 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 func (s *State[T]) getUpToDateKV(key string, minimumClock T) (kv *conflict.KV[T], found bool) {
 
 	// TODO(students): [Leaderless] Implement me!
-	return nil, false
+	curKV, ok := s.localStore.Get(key)
+
+	// cannot find
+	if !ok || curKV.Clock.HappensBefore(minimumClock) {
+		return nil, false
+	}
+
+	return curKV, true
 }
 
 // HandlePeerWrite attempts to write a KV being replicated from a peer node (not the client).
@@ -76,7 +114,17 @@ func (s *State[T]) HandlePeerWrite(ctx context.Context, r *pb.ResolvableKV) (*pb
 	s.log.Printf("HandlePeerWrite: received direct replication of %v", newKV)
 
 	// TODO(students): [Leaderless] Implement me!
-	return nil, errors.New("not implemented")
+	updated, updatedKV, err := s.safelyUpdateKey(newKV)
+
+	if err != nil {
+		return nil, err
+	}
+
+	reply := pb.HandlePeerWriteReply{}
+	reply.Accepted = updated
+	reply.ResolvableKv = updatedKV.Proto()
+
+	return &reply, nil
 }
 
 // replicateToNode performs a remote write of the given KV to the specified node, with 3 retries.
@@ -98,7 +146,17 @@ func (s *State[T]) replicateToNode(ctx context.Context, kv *conflict.KV[T], repl
 	s.log.Printf("write to node being called for node %d", replicaNodeID)
 
 	// TODO(students): [Leaderless] Implement me!
-	return errors.New("not implemented")
+	conn := s.node.PeerConns[uint64(replicaNodeID)]
+	client := pb.NewBasicLeaderlessReplicatorClient(conn)
+
+	s.onMessageSend()
+
+	err := s.withRetries(func() error {
+		_, err := client.HandlePeerWrite(ctx, kv.Proto())
+		return err
+	}, 3)
+
+	return err
 }
 
 // ReplicateKey replicates the given key to W arbitrary nodes (one of which is the current node).
@@ -122,7 +180,14 @@ func (s *State[T]) ReplicateKey(ctx context.Context, kv *pb.PutRequest) (*pb.Put
 	s.log.Printf("ReplicateKey: called with KV %s", newKV)
 
 	// TODO(students): [Leaderless] Implement me!
-	return nil, nil
+	s.dispatchToPeers(ctx, s.W, func(ctx context.Context, replicaNodeID uint64) error {
+		return s.replicateToNode(ctx, newKV, replicaNodeID)
+	})
+	
+	reply := pb.PutReply{}
+	reply.Clock = kv.GetClock()
+
+	return &reply, nil
 }
 
 // HandlePeerRead attempts to service a peer's read request by returning the KV from the current
