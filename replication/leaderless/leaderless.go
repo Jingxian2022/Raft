@@ -45,6 +45,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 	curKV, ok := tx.Get(newKV.Key)
 
 	if !ok {
+		s.log.Printf("safelyUpdateKey no such key")
 		tx.Put(newKV.Key, newKV)
 		return true, newKV, nil
 	}
@@ -54,10 +55,12 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 
 	// no need to update
 	if newClock.HappensBefore(curClock) {
+		s.log.Printf("safelyUpdateKey updated = false")
 		return false, curKV, nil
 	}
 
 	if curClock.HappensBefore(newClock) {
+		s.log.Printf("safelyUpdateKey updated without conflict")
 		tx.Put(newKV.Key, newKV)
 		return true, newKV, nil
 	}
@@ -68,6 +71,7 @@ func (s *State[T]) safelyUpdateKey(newKV *conflict.KV[T]) (updated bool, mostUpT
 	if err != nil {
 		return false, nil, err
 	}
+	s.log.Printf("safelyUpdateKey resolve conflict")
 
 	tx.Put(newKV.Key, updatedKV)
 
@@ -119,6 +123,7 @@ func (s *State[T]) HandlePeerWrite(ctx context.Context, r *pb.ResolvableKV) (*pb
 	// TODO(students): [Leaderless] Implement me!
 	updated, updatedKV, err := s.safelyUpdateKey(newKV)
 
+	s.log.Printf("node %d's HandlePeerWrite: updated = %t", s.node.ID, updated)
 	if err != nil {
 		return nil, err
 	}
@@ -309,26 +314,29 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[T], kvPairs map[uint64]*conflict.KV[T]) {
 
 	// TODO(students): [Leaderless] Implement me!
-	var wg sync.WaitGroup
+	//var wg sync.WaitGroup
 	for replicaNodeID, kv := range kvPairs {
 
 		if !kv.Equals(latestKV) {
 			s.log.Printf("updating node %d", replicaNodeID)
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				clientConn := s.node.PeerConns[replicaNodeID]
-				c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
-				s.onMessageSend()
+			//wg.Add(1)
+			//go func() {
+			//defer wg.Done()
+			clientConn := s.node.PeerConns[replicaNodeID]
+			c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
+			s.onMessageSend()
 
-				mykv := latestKV.Proto()
-				// c.HandlePeerWrite(ctx, mykv)
+			mykv := latestKV.Proto()
 
-				c.HandlePeerWrite(ctx, mykv)
-			}()
+			retryFunc := func() error {
+				_, err := c.HandlePeerWrite(ctx, mykv)
+				return err
+			}
+			s.withRetries(retryFunc, 3)
+			//}()
 		}
 	}
-	wg.Wait()
+	//wg.Wait()
 }
 
 // GetReplicatedKey performs a quorum read of the system, also performing read repair.

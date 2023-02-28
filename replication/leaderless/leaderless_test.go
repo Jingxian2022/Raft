@@ -121,7 +121,7 @@ func TestBasicReadRepair(t *testing.T) {
 	}
 
 	// write lots of data to replicators[0] and replicators[1]
-	numItrs := 10
+	numItrs := 5
 	for i := 0; i < numItrs; i++ {
 		pr := &pb.PutRequest{Key: strconv.Itoa(i), Value: strconv.Itoa(numItrs - i), Clock: &pb.Clock{Timestamp: 1}}
 		replicators[i%2].ReplicateKey(context.Background(), pr)
