@@ -134,15 +134,31 @@ func (s *State[T]) ReplicateKey(ctx context.Context, kv *pb.PutRequest) (*pb.Put
 // HandlePeerReadReply based off of its return values. As with HandlePeerWrite, you will want to
 // convert the node's key-value type to the *pb.ResolvableKV type required by the
 // HandlePeerReadReply.
+
+// Because these read and write operations need to be done atomically, we wrap them in a
+// transaction.
+// You will need the functions s.localStore.BeginTx() to create a tx,
+// and then tx.Get() or tx.Put() when you want to read or write a key-value pair respectively.
+// When you are done with your transaction, remember to commit the transaction with tx.Commit().
+//
+// See store/store.go for more transaction usage details.
 func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.HandlePeerReadReply, error) {
 	requestKey := request.GetKey()
 	requestClock := conflict.ClockFromProto[T](request.GetClock())
-	s.onMessageReceived(requestClock)
+	s.onMessageReceived(requestClock) // clock: onMsgRcv
 
 	s.log.Printf("HandlePeerRead: received request for key %s", requestKey)
-
 	// TODO(students): [Leaderless] Implement me!
-	return nil, errors.New("not implemented")
+	// tx := s.localStore.BeginTx(true) //???????
+	kv, found := s.getUpToDateKV(requestKey, requestClock)
+	if !found {
+		peerReadReplyStruct := pb.HandlePeerReadReply{Found: false}
+		return &peerReadReplyStruct, errors.New("no value found")
+	}
+	resovableKV := kv.Proto()
+	peerReadReplyStruct := pb.HandlePeerReadReply{Found: found, ResolvableKv: resovableKV}
+	// tx.Commit()
+	return &peerReadReplyStruct, nil
 }
 
 // readFromNode performs a remote read from the specified node, with 3 retries.
@@ -150,7 +166,9 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 // Specifically, given the replica node id, send it an RPC to directly read the given key.
 // Don't forget to call s.onMessageSend() before sending the RPC: this will update the clock
 // state as necessary. Again, you may find withRetries useful.
-//
+
+// You should create the RPC client using s.node.PeerConns and pb.NewBasicLeaderlessReplicatorClient.
+
 // An error should ONLY be returned if the actual RPC fails. If the replica node just does not
 // have the specified key, do not return an error (you can think of this replica as just being
 // really behind).
@@ -158,11 +176,36 @@ func (s *State[T]) HandlePeerRead(ctx context.Context, request *pb.Key) (*pb.Han
 // Additionally, you will also want to convert the Proto representation of the key-value back to
 // our node's key-value type (the inverse of what you did in HandlePeerRead/Write). To do this,
 // you will want to use the conflict.KVFromProto function found in the conflict module.
+
+// Reference the handout for how to send an RPC to a given node using its ID! Also remember that
+// you can convert a key-value into its protobuf counterpart (*pb.ResolvableKV) using the
+// .Proto() function.
 func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID uint64, clientClock T) (*conflict.KV[T], error) {
 	s.log.Printf("read from node being called for node %d", replicaNodeID)
 
 	// TODO(students): [Leaderless] Implement me!
-	return nil, errors.New("not implemented")
+
+	structedInKey := &pb.Key{Key: key, Clock: clientClock.Proto()}
+	clientConn := s.node.PeerConns[replicaNodeID]
+	c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
+	var readReply *pb.HandlePeerReadReply
+	s.onMessageSend()
+
+	retryFunc := func() error {
+		reply, err := c.HandlePeerRead(ctx, structedInKey)
+		if err == nil {
+			readReply = reply
+		}
+		return err
+	}
+	err := s.withRetries(retryFunc, 3)
+	if err != nil {
+		return nil, errors.New("HandlePeerRead error")
+	}
+	myKv := readReply.GetResolvableKv()
+	newClock := s.conflictResolver.NewClock()
+	return &conflict.KV[T]{Key: myKv.Key, Value: myKv.Value, Clock: newClock}, nil
+
 }
 
 // PerformReadRepair performs synchronous read repair using the most up-to-date key-value pair,
@@ -181,6 +224,26 @@ func (s *State[T]) readFromNode(ctx context.Context, key string, replicaNodeID u
 func (s *State[T]) PerformReadRepair(ctx context.Context, latestKV *conflict.KV[T], kvPairs map[uint64]*conflict.KV[T]) {
 
 	// TODO(students): [Leaderless] Implement me!
+	latestKey := latestKV.Key
+	for replicaNodeID, kv := range kvPairs {
+		if kv.Key == latestKey {
+			go func() {
+
+				clientConn := s.node.PeerConns[replicaNodeID]
+				c := pb.NewBasicLeaderlessReplicatorClient(clientConn)
+				s.onMessageSend()
+
+				mykv := latestKV.Proto()
+
+				retryFunc := func() error {
+					_, err := c.HandlePeerWrite(ctx, mykv)
+					return err
+				}
+
+				s.withRetries(retryFunc, 3)
+			}()
+		}
+	}
 }
 
 // GetReplicatedKey performs a quorum read of the system, also performing read repair.
@@ -207,7 +270,31 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	s.log.Printf("GetReplicatedKey: key %s with clock %v", r.Key, clientClock)
 
 	// TODO(students): [Leaderless] Implement me!
-	return nil, errors.New("not implemented")
+	resolver := s.conflictResolver
+	R := s.R
+	key := r.Key
+	KVMap := make(map[uint64]*conflict.KV[T])
+	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
+		getKV, err := s.readFromNode(ctx, key, replicaNodeID, clientClock)
+		KVMap[replicaNodeID] = getKV
+		return err
+	}
+	err := s.dispatchToPeers(ctx, R, readFromNodeFunc) //parallel
+	if err != nil {
+		return nil, errors.New("GetReplicatedKey error")
+	}
+	var kvs []*conflict.KV[T]
+	for _, kv := range KVMap {
+		kvs = append(kvs, kv)
+	}
+	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
+	if err == nil {
+		s.PerformReadRepair(ctx, latestKV, KVMap)
+	} else {
+		return nil, errors.New("No KV is read")
+	}
+	reply := pb.GetReply{Value: latestKV.Value, Clock: clientClock.Proto()}
+	return &reply, nil
 }
 
 // ======================================
