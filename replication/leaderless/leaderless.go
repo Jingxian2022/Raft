@@ -396,7 +396,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	}
 
 	if len(kvs) == 0 {
-		return &pb.GetReply{Value: "", Clock: clientClock.Proto()}, nil
+		return nil, errors.New("reading non-existent key")
 	}
 
 	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
