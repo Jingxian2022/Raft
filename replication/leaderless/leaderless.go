@@ -152,9 +152,8 @@ func (s *State[T]) replicateToNode(ctx context.Context, kv *conflict.KV[T], repl
 	conn := s.node.PeerConns[uint64(replicaNodeID)]
 	client := pb.NewBasicLeaderlessReplicatorClient(conn)
 
-	s.onMessageSend()
-
 	err := s.withRetries(func() error {
+		s.onMessageSend()
 		_, err := client.HandlePeerWrite(ctx, kv.Proto())
 		return err
 	}, 3)
@@ -183,9 +182,12 @@ func (s *State[T]) ReplicateKey(ctx context.Context, kv *pb.PutRequest) (*pb.Put
 	s.log.Printf("ReplicateKey: called with KV %s", newKV)
 
 	// TODO(students): [Leaderless] Implement me!
-	s.dispatchToPeers(ctx, s.W, func(ctx context.Context, replicaNodeID uint64) error {
+	err := s.dispatchToPeers(ctx, s.W, func(ctx context.Context, replicaNodeID uint64) error {
 		return s.replicateToNode(ctx, newKV, replicaNodeID)
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	reply := pb.PutReply{}
 	reply.Clock = kv.GetClock()
