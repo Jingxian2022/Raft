@@ -79,22 +79,14 @@ func TestHandlePeerRead(t *testing.T) {
 		t.Fatalf("Error while replicating key to node 0: %v", err)
 	}
 
-	// log.Printf("[HandlePeerRead] response clock is %v", response.GetClock())
-	// reply, err := firstReplicator.HandlePeerRead(context.Background(), &pb.Key{Key: key, Clock: &pb.Clock{Timestamp: 1}})
-	// if err != nil {
-	// 	t.Fatalf("[HandlePeerRead] Error while getting key from node 1: %v", err)
-	// }
-	// log.Printf(reply.String())
-
-	log.Printf("[readFromNode] response clock is %v", response.GetClock())
-	kv, err := firstReplicator.readFromNode(context.Background(), key, firstReplicator.node.ID, firstReplicator.conflictResolver.NewClock())
+	log.Printf("[HandlePeerRead] response clock is %v", response.GetClock())
+	reply, err := firstReplicator.HandlePeerRead(context.Background(), &pb.Key{Key: key, Clock: &pb.Clock{Timestamp: 1}})
 	if err != nil {
-		t.Fatalf("[readFromNode] Error while getting key from node 1: %v", err)
+		t.Fatalf("[HandlePeerRead] Error while getting key from node 1: %v", err)
 	}
-	if kv.Value != value {
-		t.Fatal("[readFromNode] Error: getting wrong value")
+	if reply.ResolvableKv.Value != value {
+		t.Fatal("[HandlePeerRead] Error: got wrong value")
 	}
-
 }
 
 // Read repair brings nodes that have falled behind up-to-date when we do reads. To test that read
