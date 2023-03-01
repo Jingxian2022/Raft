@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sync"
+	"time"
+
 	"modist/orchestrator/node"
 	pb "modist/proto"
 	"modist/replication/conflict"
 	"modist/store"
-	"sync"
-	"time"
 )
 
 // Leaderless replication is a strategy where any node in a cluster can accept writes or reads,
@@ -381,7 +382,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		} else if !getKV.Clock.HappensBefore(latestKV.Clock) {
 			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
 		}
-		
+
 		mutex.Unlock()
 		return nil
 	}
