@@ -359,7 +359,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 
 	KVMap := make(map[uint64]*conflict.KV[T])
 	var latestKV *conflict.KV[T]
-	var mutex = &sync.RWMutex{}
+	var mutex = &sync.Mutex{}
 
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, r.Key, replicaNodeID, clientClock)
