@@ -359,7 +359,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	// TODO(students): [Leaderless] Implement me!
 
 	KVMap := make(map[uint64]*conflict.KV[T])
-	var latestKV *conflict.KV[T]
+	var newestKV *conflict.KV[T]
 	var mutex = &sync.RWMutex{}
 
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
@@ -370,19 +370,16 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		}
 
 		mutex.Lock()
-		defer mutex.Unlock()
+
 		KVMap[replicaNodeID] = getKV
 
-		if getKV == nil {
-			return nil
+		if getKV != nil && (newestKV == nil || newestKV.Clock.HappensBefore(getKV.Clock)) {
+			newestKV = getKV
+		} else if getKV != nil && !getKV.Clock.HappensBefore(newestKV.Clock) {
+			newestKV, _ = s.conflictResolver.ResolveConcurrentEvents(newestKV, getKV)
 		}
 
-		if latestKV == nil || latestKV.Clock.HappensBefore(getKV.Clock) {
-			latestKV = getKV
-		} else if !getKV.Clock.HappensBefore(latestKV.Clock) {
-			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
-		}
-
+		mutex.Unlock()
 		return nil
 	}
 	err := s.dispatchToPeers(ctx, s.R, readFromNodeFunc) //parallel
@@ -390,12 +387,12 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		return nil, errors.New("GetReplicatedKey error")
 	}
 
-	if latestKV == nil {
+	if newestKV == nil {
 		return nil, errors.New("reading non-existent key")
 	}
 
-	s.PerformReadRepair(ctx, latestKV, KVMap)
-	reply := pb.GetReply{Value: latestKV.Value, Clock: clientClock.Proto()}
+	s.PerformReadRepair(ctx, newestKV, KVMap)
+	reply := pb.GetReply{Value: newestKV.Value, Clock: clientClock.Proto()}
 
 	return &reply, nil
 }
