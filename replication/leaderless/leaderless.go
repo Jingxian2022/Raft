@@ -369,10 +369,10 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		}
 
 		mutex.Lock()
-		defer mutex.Unlock()
 		KVMap[replicaNodeID] = getKV
 
 		if getKV == nil {
+			mutex.Unlock()
 			return nil
 		}
 
@@ -381,7 +381,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		} else {
 			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
 		}
-
+		mutex.Unlock()
 		return nil
 	}
 	err := s.dispatchToPeers(ctx, s.R, readFromNodeFunc) //parallel
