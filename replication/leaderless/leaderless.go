@@ -356,15 +356,13 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 	s.log.Printf("GetReplicatedKey: key %s with clock %v", r.Key, clientClock)
 
 	// TODO(students): [Leaderless] Implement me!
-	resolver := s.conflictResolver
-	R := s.R
-	key := r.Key
 
 	KVMap := make(map[uint64]*conflict.KV[T])
-	var mutex = &sync.RWMutex{}
-	// KVMap := M{mymap: make(map[uint64]*conflict.KV[T])}
+	var latestKV *conflict.KV[T]
+	var mutex = &sync.Mutex{}
+
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
-		getKV, err := s.readFromNode(ctx, key, replicaNodeID, clientClock)
+		getKV, err := s.readFromNode(ctx, r.Key, replicaNodeID, clientClock)
 		// getKV may equal to nil
 
 		if err != nil {
@@ -375,44 +373,39 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 
 		mutex.Lock()
 		KVMap[replicaNodeID] = getKV
-		if getKV != nil {
-			//s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
-		} else {
-			//s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
+
+		if getKV == nil {
+			mutex.Unlock()
+			return nil
 		}
+
+		if latestKV == nil || latestKV.Clock.HappensBefore(getKV.Clock) {
+			latestKV = getKV
+		} else if !getKV.Clock.HappensBefore(latestKV.Clock) {
+			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
+		}
+		//if getKV != nil {
+		//s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
+		//} else {
+		//s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
+		//}
 		mutex.Unlock()
 
 		return nil
 	}
-	err := s.dispatchToPeers(ctx, R, readFromNodeFunc) //parallel
+	err := s.dispatchToPeers(ctx, s.R, readFromNodeFunc) //parallel
 	if err != nil {
-		return new(pb.GetReply), errors.New("GetReplicatedKey error")
+		return nil, errors.New("GetReplicatedKey error")
 	}
 
-	// used to resolve conflict
-	var kvs []*conflict.KV[T]
-	for _, kv := range KVMap {
-		// KVMap may had nil values
-		if kv != nil {
-			//s.log.Printf("GetReplicatedKey: kv in kvs: %v", kv)
-			kvs = append(kvs, kv)
-		}
-	}
-
-	if len(kvs) == 0 {
+	if latestKV == nil {
 		return nil, errors.New("reading non-existent key")
 	}
 
-	s.log.Printf("GetReplicatedKey: kvs: %v", kvs)
+	s.log.Printf("GetReplicatedKey: kvs: %v", KVMap)
 
-	latestKV, err := resolver.ResolveConcurrentEvents(kvs...)
+	s.PerformReadRepair(ctx, latestKV, KVMap)
 
-	if err == nil {
-		//s.log.Printf("performing read repair...")
-		s.PerformReadRepair(ctx, latestKV, KVMap)
-	} else {
-		return new(pb.GetReply), errors.New("No KV is read")
-	}
 	reply := pb.GetReply{Value: latestKV.Value, Clock: clientClock.Proto()}
 	return &reply, nil
 }
