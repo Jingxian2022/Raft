@@ -376,11 +376,12 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 			return nil
 		}
 
-		if latestKV == nil {
+		if latestKV == nil || latestKV.Clock.HappensBefore(getKV.Clock) {
 			latestKV = getKV
-		} else {
+		} else if !getKV.Clock.HappensBefore(latestKV.Clock) {
 			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
 		}
+		
 		mutex.Unlock()
 		return nil
 	}
