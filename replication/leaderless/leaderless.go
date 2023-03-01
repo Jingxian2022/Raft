@@ -360,7 +360,7 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 
 	KVMap := make(map[uint64]*conflict.KV[T])
 	var latestKV *conflict.KV[T]
-	var mutex = &sync.Mutex{}
+	var mutex = &sync.RWMutex{}
 
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, r.Key, replicaNodeID, clientClock)
@@ -370,10 +370,10 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		}
 
 		mutex.Lock()
+		defer mutex.Unlock()
 		KVMap[replicaNodeID] = getKV
 
 		if getKV == nil {
-			mutex.Unlock()
 			return nil
 		}
 
@@ -383,7 +383,6 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
 		}
 
-		mutex.Unlock()
 		return nil
 	}
 	err := s.dispatchToPeers(ctx, s.R, readFromNodeFunc) //parallel
