@@ -359,37 +359,28 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 
 	KVMap := make(map[uint64]*conflict.KV[T])
 	var latestKV *conflict.KV[T]
-	var mutex = &sync.Mutex{}
+	var mutex = &sync.RWMutex{}
 
 	readFromNodeFunc := func(ctx context.Context, replicaNodeID uint64) error {
 		getKV, err := s.readFromNode(ctx, r.Key, replicaNodeID, clientClock)
 		// getKV may equal to nil
-
 		if err != nil {
 			return err
 		}
 
-		//s.log.Printf("GetReplicatedKey: getKV: %v", getKV)
-
 		mutex.Lock()
+		defer mutex.Unlock()
 		KVMap[replicaNodeID] = getKV
 
 		if getKV == nil {
-			mutex.Unlock()
 			return nil
 		}
 
-		if latestKV == nil || latestKV.Clock.HappensBefore(getKV.Clock) {
+		if latestKV == nil {
 			latestKV = getKV
-		} else if !getKV.Clock.HappensBefore(latestKV.Clock) {
+		} else {
 			latestKV, _ = s.conflictResolver.ResolveConcurrentEvents(latestKV, getKV)
 		}
-		//if getKV != nil {
-		//s.log.Printf("GetReplicatedKey: get value %s from node %d", getKV.Value, replicaNodeID)
-		//} else {
-		//s.log.Printf("GetReplicatedKey: get value nil from node %d", replicaNodeID)
-		//}
-		mutex.Unlock()
 
 		return nil
 	}
@@ -402,11 +393,9 @@ func (s *State[T]) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.
 		return nil, errors.New("reading non-existent key")
 	}
 
-	s.log.Printf("GetReplicatedKey: kvs: %v", KVMap)
-
 	s.PerformReadRepair(ctx, latestKV, KVMap)
-
 	reply := pb.GetReply{Value: latestKV.Value, Clock: clientClock.Proto()}
+
 	return &reply, nil
 }
 
