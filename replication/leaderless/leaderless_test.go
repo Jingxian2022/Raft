@@ -121,7 +121,7 @@ func TestBasicReadRepair(t *testing.T) {
 	}
 
 	// write lots of data to replicators[0] and replicators[1]
-	numItrs := 5
+	numItrs := 10
 	for i := 0; i < numItrs; i++ {
 		pr := &pb.PutRequest{Key: strconv.Itoa(i), Value: strconv.Itoa(numItrs - i), Clock: &pb.Clock{Timestamp: 1}}
 		replicators[i%2].ReplicateKey(context.Background(), pr)
@@ -156,13 +156,13 @@ func TestReadRepairAllEventsConcurrent(t *testing.T) {
 	var replicators []*State[conflict.PhysicalClock]
 
 	for _, node := range nodes {
-		replicator := Configure[conflict.PhysicalClock](testCreatePhysicalClockArgs(node, 1, 3))
+		replicator := Configure[conflict.PhysicalClock](testCreatePhysicalClockArgs(node, 2, 3))
 		replicators = append(replicators, replicator)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 30; i++ {
 		pr := &pb.PutRequest{Key: "k", Value: strconv.Itoa(i), Clock: &pb.Clock{Timestamp: 1}}
-		replicators[i].ReplicateKey(context.Background(), pr)
+		replicators[i%3].ReplicateKey(context.Background(), pr)
 	}
 
 	replicators[1].replicaChooser = func(numReplicas int, exclude []uint64) ([]uint64, error) {
