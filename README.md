@@ -1,23 +1,15 @@
-# Conflicts, Consistency, and Clocks
+# Leaderless Replication
 ## Distribution of Labor
 ### Yaxin Liu (yliu587)
-* VersionVectorClock implement
-* VersionVectorClock tests
+* Task 1 Helpers (safelyUpdateKey and getUpToDateKV)
+* Task 2 Write Path (HandlePeerWrite, replicateToNode, and ReplicateKey)
 
 ### Jingxian Zhang (jzhan529)
-* PhysicalClock implement
-* PhysicalClock tests
+* Task 3: Read Path (HandlePeerRead, readFromNode, PerformReadRepair, and GetReplicatedKey)
 
 ## Test
-### VersionVectorClock Test Overview
+### TestHandlePeerRead
+Testing basic function of HandlePeerRead after performing a single replicateKey operation
 
-* TestNewVersionVectorClock: test creating a new VersionVectorClock from VersionVectorConflictResolver
-* TestVectorConcurrentEventsDoNotHappenBefore: test whether a VersionVectorClock happens before another
-* TestResolveConcurrentEventsConflictsVector: test whether a VersionVectorConflictResolver can merge two concurrent VersionVectorClocks correctly
-* TestResolveConcurrentEventsNoConflictsVector: test the rubustness of a VersionVectorConflictResolver when there are no conflicts
-
-### PhysicalClock Test Overview
-
-* TestPhysicalConcurrentEventsHappenBefore: test whether returns the correct happen before judgement with different PhysicalClocks
-* TestResolveConcurrentEventsConflicts: test solution of eventual consistency when there is conflict of KVs with the same PhysicalClock
-* TestResolveConcurrentEventsNoConflicts: test the rubustness of a PhysicalClockConflictResolver when there are no conflicts
+### TestReadRepairAllEventsConcurrent
+Testing whether all the nodes get the latest value after performing writing the same key lots of times by performing readRepair correctly 
