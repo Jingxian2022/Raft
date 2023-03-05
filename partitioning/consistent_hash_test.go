@@ -74,3 +74,13 @@ func TestConsistentHash_Lookup_SimpleIdentity(t *testing.T) {
 	binary.BigEndian.PutUint64(byteKey, 51)
 	checkLookup(t, "Lookup(51)", c, string(byteKey), 50)
 }
+
+func TestConsistentHash_AddReplicaGroup(t *testing.T) {
+	c := NewConsistentHash(2)
+	c.hasher = identityHasher
+
+	c.AddReplicaGroup(1)
+	if len(c.virtualNodes) != 2 {
+		t.Errorf("wrong length %d\n", len(c.virtualNodes))
+	}
+}

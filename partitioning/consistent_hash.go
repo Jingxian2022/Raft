@@ -6,7 +6,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
+
+	"golang.org/x/exp/slices"
 )
 
 // Lookup returns the ID of the replica group to which the specified key is assigned.
@@ -19,7 +22,33 @@ import (
 func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err error) {
 
 	// TODO(students): [Partitioning] Implement me!
-	return 0, "", errors.New("not implemented")
+	if len(c.virtualNodes) == 0 {
+		return 0, "", errors.New("no vnodes")
+	}
+	hash := c.keyHash(key)
+	mykey := virtualNode{hash: hash}
+
+	for i, node := range c.virtualNodes {
+		if i == len(c.virtualNodes)-1 {
+			if virtualNodeCmp(mykey, node) == 0 {
+				id = node.id
+			} else {
+				id = c.virtualNodes[0].id
+			}
+			continue
+		}
+		fmt.Printf("the %dth time, mykey less than node is %t\n", i, virtualNodeLess(mykey, node))
+		// var pre virtualNode
+		// if i != 0 {
+		// 	pre = c.virtualNodes[i-1]
+		// }
+		if virtualNodeLess(mykey, node) || virtualNodeCmp(mykey, node) == 0 {
+			fmt.Println("here")
+			id = node.id
+			break
+		}
+	}
+	return id, hashToString(hash), nil
 }
 
 // AddReplicaGroup adds a replica group to the hash ring, returning a list of key ranges that need
@@ -32,10 +61,57 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 // moved to the new replica group due to the virtual node (and from where). The length of the
 // returned list of reassignments must equal the number of virtual nodes per replica group,
 // with one entry corresponding to each virtual node (but in any order).
+
+// We construct virtual node ids (which are then hashed, randomizing their spread on the ring)
+// by adding a predetermined integer (from 0 to N-1)  to the replica group id.
 func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 
 	// TODO(students): [Partitioning] Implement me!
-	return nil
+	var res []Reassignment
+	for _, value := range c.virtualNodes {
+		if value.id == id {
+			return res
+		}
+	}
+
+	nodeGroup := c.virtualNodesForGroup(id)
+	c.virtualNodes = append(c.virtualNodes, nodeGroup...)
+	slices.SortFunc(c.virtualNodes, virtualNodeLess)
+	for i, node := range c.virtualNodes {
+		if node.id == id {
+			var pre virtualNode
+			if i == 0 {
+				pre = c.virtualNodes[len(c.virtualNodes)-1]
+			} else {
+				pre = c.virtualNodes[i-1]
+			}
+			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
+			res = append(res, Reassignment{pre.id, uint64(node.id), keyrange})
+		}
+	}
+	return res
+
+	// for _, node := range nodeGroup {
+	// 	if len(c.virtualNodes)==0 {
+	// 		c.virtualNodes = append(c.virtualNodes, node)
+	// 		continue
+	// 	}
+	// 	for i := 0; i < len(c.virtualNodes); i++ {
+	// 		pre := c.virtualNodes[i]
+	// 		if i == len(c.virtualNodes) {
+	// 			c.virtualNodes = append(c.virtualNodes, node)
+	// 			keyrange := KeyRange{hashToString(incrementHash(c.virtualNodes[0].hash)), hashToString(node.hash)}
+	// 			res = append(res, Reassignment{c.virtualNodes[0].id, uint64(node.id), keyrange}) //?????
+	// 			continue
+	// 		}
+	// 		if virtualNodeLess(node, pre) {
+	// 			c.virtualNodes = append(c.virtualNodes[:i-1], append([]virtualNode{node}, c.virtualNodes[i-1:]...)...)
+	// 			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
+	// 			res = append(res, Reassignment{pre.id, uint64(node.id), keyrange})
+	// 		}
+	// 	}
+	// }
+
 }
 
 // RemoveReplicaGroup removes a replica group from the hash ring, returning a list of key
@@ -50,7 +126,29 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 func (c *ConsistentHash) RemoveReplicaGroup(id uint64) []Reassignment {
 
 	// TODO(students): [Partitioning] Implement me!
-	return nil
+	var res []Reassignment
+	nodes := c.virtualNodes
+	for i, node := range nodes {
+		if node.id == id {
+			var pre virtualNode
+			// nodes = append(nodes[:i], nodes[i+1:]...)
+			if i == 0 {
+				pre = c.virtualNodes[len(c.virtualNodes)-1]
+			} else {
+				pre = c.virtualNodes[i-1]
+			}
+			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
+			res = append(res, Reassignment{pre.id, node.id, keyrange})
+		}
+	}
+	var newNodes []virtualNode
+	for _, node := range nodes {
+		if node.id != id {
+			newNodes = append(newNodes, node)
+		}
+	}
+	c.virtualNodes = newNodes
+	return res
 }
 
 // ======================================
