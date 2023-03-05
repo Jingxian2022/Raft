@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"math"
 
 	"golang.org/x/exp/slices"
@@ -22,33 +21,8 @@ import (
 func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err error) {
 
 	// TODO(students): [Partitioning] Implement me!
-	if len(c.virtualNodes) == 0 {
-		return 0, "", errors.New("no vnodes")
-	}
-	hash := c.keyHash(key)
-	mykey := virtualNode{hash: hash}
+	return 0, "", errors.New("No implement")
 
-	for i, node := range c.virtualNodes {
-		if i == len(c.virtualNodes)-1 {
-			if virtualNodeCmp(mykey, node) == 0 {
-				id = node.id
-			} else {
-				id = c.virtualNodes[0].id
-			}
-			continue
-		}
-		fmt.Printf("the %dth time, mykey less than node is %t\n", i, virtualNodeLess(mykey, node))
-		// var pre virtualNode
-		// if i != 0 {
-		// 	pre = c.virtualNodes[i-1]
-		// }
-		if virtualNodeLess(mykey, node) || virtualNodeCmp(mykey, node) == 0 {
-			fmt.Println("here")
-			id = node.id
-			break
-		}
-	}
-	return id, hashToString(hash), nil
 }
 
 // AddReplicaGroup adds a replica group to the hash ring, returning a list of key ranges that need
