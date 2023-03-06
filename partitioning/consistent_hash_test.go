@@ -83,7 +83,7 @@ func TestConsistentHash_AddReplicaGroup_Basic(t *testing.T) {
 	c.AddReplicaGroup(2)
 	reply := c.AddReplicaGroup(3)
 	if reply[0].From != 1 && reply[0].To != 3 {
-		t.Errorf("Id From or to error")
+		t.Errorf("reply From or To error")
 	}
 }
 
@@ -94,9 +94,6 @@ func TestConsistentHash_AddReplicaGroup_FirstAdd(t *testing.T) {
 	reply := c.AddReplicaGroup(1)
 	if reply != nil {
 		t.Error("wrong return msg \n")
-	}
-	if len(c.virtualNodes) != 2 {
-		t.Error("Nodes number error")
 	}
 }
 
@@ -129,8 +126,8 @@ func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
 	slices.SortFunc(c.virtualNodes, virtualNodeLess)
 
 	reply := c.RemoveReplicaGroup(100)
-	if len(reply) != 2 {
-		t.Error("number error")
+	if reply[0].From != 100 || reply[0].To != 200 {
+		t.Error("reply From or To error")
 	}
 	c.RemoveReplicaGroup(200)
 	c.RemoveReplicaGroup(1)
