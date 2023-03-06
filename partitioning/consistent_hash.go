@@ -27,25 +27,32 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 	hash := c.keyHash(key)
 	mykey := virtualNode{hash: hash}
 
-	if bytes.Compare(hash[:], c.virtualNodes[len(c.virtualNodes)-1].hash[:]) > 0 {
-		return c.virtualNodes[0].id, hashToString(hash), nil
-	}
-
-	for i, node := range c.virtualNodes {
-		if i == len(c.virtualNodes)-1 {
-			if virtualNodeCmp(mykey, node) == 0 {
-				id = node.id
-			} else {
-				id = c.virtualNodes[0].id
-			}
-			continue
+	// for i, node := range c.virtualNodes {
+	// 	if i == len(c.virtualNodes)-1 {
+	// 		if virtualNodeCmp(mykey, node) == 0 {
+	// 			id = node.id
+	// 		} else {
+	// 			id = c.virtualNodes[0].id
+	// 		}
+	// 		break
+	// 	}
+	// 	if virtualNodeLess(mykey, node) || virtualNodeCmp(mykey, node) == 0 {
+	// 		id = node.id
+	// 		break
+	// 	}
+	// }
+	vnode := c.virtualNodes[len(c.virtualNodes)-1]
+	l, r := 0, len(c.virtualNodes)-1
+	for l <= r {
+		mid := (l + r) / 2
+		if bytes.Compare(hashedKey[:], c.virtualNodes[mid].hash[:]) <= 0 {
+			vnode = c.node(mid)
+			r = mid - 1
+		} else {
+			l = mid + 1
 		}
-		if virtualNodeLess(mykey, node) || virtualNodeCmp(mykey, node) == 0 {
-			id = node.id
-			break
-		}
 	}
-	return id, hashToString(hash), nil
+	return vnode.id, hashToString(hash), nil
 }
 
 // AddReplicaGroup adds a replica group to the hash ring, returning a list of key ranges that need
