@@ -81,15 +81,20 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 			} else {
 				pre = c.virtualNodes[i-1]
 			}
-			nextIndex := i + 1
-			next := c.virtualNodes[nextIndex]
-			for next.id == id {
+			nextIndex := i
+			if i == len(c.virtualNodes)-1 {
+				nextIndex = 0
+			} else {
+				nextIndex = i + 1
+			}
+			for c.virtualNodes[nextIndex].id == id {
 				if nextIndex == len(c.virtualNodes)-1 {
 					nextIndex = 0
 				} else {
 					nextIndex = i + 1
 				}
 			}
+			next := c.virtualNodes[nextIndex]
 			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
 			res = append(res, Reassignment{next.id, uint64(node.id), keyrange})
 		}

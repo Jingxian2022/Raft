@@ -88,6 +88,18 @@ func TestConsistentHash_AddReplicaGroup_firstAdd(t *testing.T) {
 	}
 }
 
+func TestConsistentHash_AddReplicaGroup_AlreadyExist(t *testing.T) {
+	c := NewConsistentHash(2)
+	c.hasher = identityHasher
+
+	c.AddReplicaGroup(1)
+	reply := c.AddReplicaGroup(1)
+	if reply != nil {
+		t.Error("AlreadyExist error")
+	}
+
+}
+
 func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
 	c := NewConsistentHash(2)
 	c.hasher = identityHasher
@@ -104,7 +116,24 @@ func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
 
 	reply := c.RemoveReplicaGroup(100)
 	if len(reply) != 2 {
-		t.Error(" number error")
+		t.Error("number error")
 	}
 
+}
+
+func TestConsistentHash_RemoveReplicaGroup_NoTargetGroup(t *testing.T) {
+	c := NewConsistentHash(2)
+	c.hasher = identityHasher
+
+	c.virtualNodes = []virtualNode{
+		newVirtualNode(c, 1, 0),
+		newVirtualNode(c, 1, 1),
+		newVirtualNode(c, 50, 0),
+		newVirtualNode(c, 50, 10),
+	}
+	slices.SortFunc(c.virtualNodes, virtualNodeLess)
+	reply := c.RemoveReplicaGroup(100)
+	if reply != nil {
+		t.Error("reply error")
+	}
 }
