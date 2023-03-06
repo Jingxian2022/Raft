@@ -81,8 +81,14 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 			} else {
 				pre = c.virtualNodes[i-1]
 			}
+			var next virtualNode
+			if i == len(c.virtualNodes)-1 {
+				next = c.virtualNodes[0]
+			} else {
+				next = c.virtualNodes[i+1]
+			}
 			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
-			res = append(res, Reassignment{pre.id, uint64(node.id), keyrange})
+			res = append(res, Reassignment{next.id, uint64(node.id), keyrange})
 		}
 	}
 	return res
@@ -105,7 +111,6 @@ func (c *ConsistentHash) RemoveReplicaGroup(id uint64) []Reassignment {
 	for i, node := range nodes {
 		if node.id == id {
 			var next virtualNode
-			// nodes = append(nodes[:i], nodes[i+1:]...)
 			if i == len(c.virtualNodes)-1 {
 				next = c.virtualNodes[0]
 			} else {
