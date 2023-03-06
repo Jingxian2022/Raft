@@ -75,12 +75,36 @@ func TestConsistentHash_Lookup_SimpleIdentity(t *testing.T) {
 	checkLookup(t, "Lookup(51)", c, string(byteKey), 50)
 }
 
-func TestConsistentHash_AddReplicaGroup(t *testing.T) {
+func TestConsistentHash_AddReplicaGroup_firstAdd(t *testing.T) {
 	c := NewConsistentHash(2)
 	c.hasher = identityHasher
 
-	c.AddReplicaGroup(1)
-	if len(c.virtualNodes) != 2 {
-		t.Errorf("wrong length %d\n", len(c.virtualNodes))
+	reply := c.AddReplicaGroup(1)
+	if reply != nil {
+		t.Error("wrong return msg \n")
 	}
+	if len(c.virtualNodes) != 2 {
+		t.Error("Nodes number error")
+	}
+}
+
+func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
+	c := NewConsistentHash(2)
+	c.hasher = identityHasher
+
+	c.virtualNodes = []virtualNode{
+		newVirtualNode(c, 1, 0),
+		newVirtualNode(c, 1, 1),
+		newVirtualNode(c, 50, 0),
+		newVirtualNode(c, 50, 10),
+		newVirtualNode(c, 100, 0),
+		newVirtualNode(c, 100, 2),
+	}
+	slices.SortFunc(c.virtualNodes, virtualNodeLess)
+
+	reply := c.RemoveReplicaGroup(100)
+	if len(reply) != 2 {
+		t.Error(" number error")
+	}
+
 }
