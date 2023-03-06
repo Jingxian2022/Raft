@@ -2,6 +2,7 @@ package partitioning
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"golang.org/x/exp/slices"
@@ -75,7 +76,17 @@ func TestConsistentHash_Lookup_SimpleIdentity(t *testing.T) {
 	checkLookup(t, "Lookup(51)", c, string(byteKey), 50)
 }
 
-func TestConsistentHash_AddReplicaGroup_firstAdd(t *testing.T) {
+func TestConsistentHash_AddReplicaGroup_Basic(t *testing.T) {
+	c := NewConsistentHash(2)
+	c.hasher = identityHasher
+
+	c.AddReplicaGroup(1)
+	c.AddReplicaGroup(2)
+	reply := c.AddReplicaGroup(3)
+	fmt.Printf("add then from %s to %s", reply[0].From, reply[0].To)
+}
+
+func TestConsistentHash_AddReplicaGroup_FirstAdd(t *testing.T) {
 	c := NewConsistentHash(2)
 	c.hasher = identityHasher
 
@@ -111,6 +122,8 @@ func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
 		newVirtualNode(c, 50, 10),
 		newVirtualNode(c, 100, 0),
 		newVirtualNode(c, 100, 2),
+		newVirtualNode(c, 200, 0),
+		newVirtualNode(c, 200, 2),
 	}
 	slices.SortFunc(c.virtualNodes, virtualNodeLess)
 
@@ -118,6 +131,8 @@ func TestConsistentHash_RemoveReplicaGroup(t *testing.T) {
 	if len(reply) != 2 {
 		t.Error("number error")
 	}
+	c.RemoveReplicaGroup(200)
+	c.RemoveReplicaGroup(1)
 
 }
 

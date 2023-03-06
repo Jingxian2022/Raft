@@ -118,12 +118,21 @@ func (c *ConsistentHash) RemoveReplicaGroup(id uint64) []Reassignment {
 	nodes := c.virtualNodes
 	for i, node := range nodes {
 		if node.id == id {
-			var next virtualNode
-			if i == len(c.virtualNodes)-1 {
-				next = c.virtualNodes[0]
+			nextIndex := i
+			if nextIndex == len(c.virtualNodes)-1 {
+				nextIndex = 0
 			} else {
-				next = c.virtualNodes[i+1]
+				nextIndex = nextIndex + 1
 			}
+			for c.virtualNodes[nextIndex].id == id {
+				if nextIndex == len(c.virtualNodes)-1 {
+					nextIndex = 0
+				} else {
+					nextIndex = nextIndex + 1
+				}
+			}
+			next := c.virtualNodes[nextIndex]
+
 			var pre virtualNode
 			if i == 0 {
 				pre = c.virtualNodes[len(c.virtualNodes)-1]
