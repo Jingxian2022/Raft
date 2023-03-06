@@ -52,7 +52,7 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 	// 		l = mid + 1
 	// 	}
 	// }
-	// return vnode.id, hashToString(hash), nil
+	return id, hashToString(hash), nil
 }
 
 // AddReplicaGroup adds a replica group to the hash ring, returning a list of key ranges that need

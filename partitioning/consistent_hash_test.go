@@ -82,8 +82,8 @@ func TestConsistentHash_AddReplicaGroup_Basic(t *testing.T) {
 	c.AddReplicaGroup(1)
 	c.AddReplicaGroup(2)
 	reply := c.AddReplicaGroup(3)
-	if len(reply) == 2 {
-		t.Errorf("add then from %d to %d", reply[0].From, reply[0].To)
+	if reply[0].From != 1 && reply[0].To != 3 {
+		t.Errorf("Id From or to error")
 	}
 }
 
