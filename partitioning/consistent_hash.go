@@ -40,18 +40,6 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 			break
 		}
 	}
-
-	// vnode := c.virtualNodes[len(c.virtualNodes)-1]
-	// l, r := 0, len(c.virtualNodes)-1
-	// for l <= r {
-	// 	mid := (l + r) / 2
-	// 	if bytes.Compare(hash[:], c.virtualNodes[mid].hash[:]) <= 0 {
-	// 		vnode = c.node(mid)
-	// 		r = mid - 1
-	// 	} else {
-	// 		l = mid + 1
-	// 	}
-	// }
 	return id, hashToString(hash), nil
 }
 
