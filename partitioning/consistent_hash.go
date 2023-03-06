@@ -25,7 +25,7 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 		return 0, "", errors.New("No implements")
 	}
 	hash := c.keyHash(key)
-	mykey := virtualNode{hash: hash}
+	// mykey := virtualNode{hash: hash}
 
 	// for i, node := range c.virtualNodes {
 	// 	if i == len(c.virtualNodes)-1 {
@@ -45,7 +45,7 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 	l, r := 0, len(c.virtualNodes)-1
 	for l <= r {
 		mid := (l + r) / 2
-		if bytes.Compare(hashedKey[:], c.virtualNodes[mid].hash[:]) <= 0 {
+		if bytes.Compare(hash[:], c.virtualNodes[mid].hash[:]) <= 0 {
 			vnode = c.node(mid)
 			r = mid - 1
 		} else {
