@@ -27,6 +27,10 @@ func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err
 	hash := c.keyHash(key)
 	mykey := virtualNode{hash: hash}
 
+	if bytes.Compare(hash[:], c.virtualNodes[len(c.virtualNodes)-1].hash[:]) > 0 {
+		return c.virtualNodes[0].id, hashToString(hash), nil
+	}
+
 	for i, node := range c.virtualNodes {
 		if i == len(c.virtualNodes)-1 {
 			if virtualNodeCmp(mykey, node) == 0 {
