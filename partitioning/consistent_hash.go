@@ -21,8 +21,27 @@ import (
 func (c *ConsistentHash) Lookup(key string) (id uint64, rewrittenKey string, err error) {
 
 	// TODO(students): [Partitioning] Implement me!
-	return 0, "", errors.New("No implement")
+	if len(c.virtualNodes) == 0 {
+		return 0, "", errors.New("No implements")
+	}
+	hash := c.keyHash(key)
+	mykey := virtualNode{hash: hash}
 
+	for i, node := range c.virtualNodes {
+		if i == len(c.virtualNodes)-1 {
+			if virtualNodeCmp(mykey, node) == 0 {
+				id = node.id
+			} else {
+				id = c.virtualNodes[0].id
+			}
+			continue
+		}
+		if virtualNodeLess(mykey, node) || virtualNodeCmp(mykey, node) == 0 {
+			id = node.id
+			break
+		}
+	}
+	return id, hashToString(hash), nil
 }
 
 // AddReplicaGroup adds a replica group to the hash ring, returning a list of key ranges that need
@@ -51,6 +70,9 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 	nodeGroup := c.virtualNodesForGroup(id)
 	c.virtualNodes = append(c.virtualNodes, nodeGroup...)
 	slices.SortFunc(c.virtualNodes, virtualNodeLess)
+	if len(c.virtualNodes) == c.virtualNodesPerGroup {
+		return res
+	}
 	for i, node := range c.virtualNodes {
 		if node.id == id {
 			var pre virtualNode
@@ -64,28 +86,6 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 		}
 	}
 	return res
-
-	// for _, node := range nodeGroup {
-	// 	if len(c.virtualNodes)==0 {
-	// 		c.virtualNodes = append(c.virtualNodes, node)
-	// 		continue
-	// 	}
-	// 	for i := 0; i < len(c.virtualNodes); i++ {
-	// 		pre := c.virtualNodes[i]
-	// 		if i == len(c.virtualNodes) {
-	// 			c.virtualNodes = append(c.virtualNodes, node)
-	// 			keyrange := KeyRange{hashToString(incrementHash(c.virtualNodes[0].hash)), hashToString(node.hash)}
-	// 			res = append(res, Reassignment{c.virtualNodes[0].id, uint64(node.id), keyrange}) //?????
-	// 			continue
-	// 		}
-	// 		if virtualNodeLess(node, pre) {
-	// 			c.virtualNodes = append(c.virtualNodes[:i-1], append([]virtualNode{node}, c.virtualNodes[i-1:]...)...)
-	// 			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
-	// 			res = append(res, Reassignment{pre.id, uint64(node.id), keyrange})
-	// 		}
-	// 	}
-	// }
-
 }
 
 // RemoveReplicaGroup removes a replica group from the hash ring, returning a list of key
@@ -104,15 +104,21 @@ func (c *ConsistentHash) RemoveReplicaGroup(id uint64) []Reassignment {
 	nodes := c.virtualNodes
 	for i, node := range nodes {
 		if node.id == id {
-			var pre virtualNode
+			var next virtualNode
 			// nodes = append(nodes[:i], nodes[i+1:]...)
+			if i == len(c.virtualNodes)-1 {
+				next = c.virtualNodes[0]
+			} else {
+				next = c.virtualNodes[i+1]
+			}
+			var pre virtualNode
 			if i == 0 {
 				pre = c.virtualNodes[len(c.virtualNodes)-1]
 			} else {
 				pre = c.virtualNodes[i-1]
 			}
 			keyrange := KeyRange{hashToString(incrementHash(pre.hash)), hashToString(node.hash)}
-			res = append(res, Reassignment{pre.id, node.id, keyrange})
+			res = append(res, Reassignment{node.id, next.id, keyrange})
 		}
 	}
 	var newNodes []virtualNode
