@@ -2,7 +2,6 @@ package partitioning
 
 import (
 	"encoding/binary"
-	"fmt"
 	"testing"
 
 	"golang.org/x/exp/slices"
@@ -83,7 +82,9 @@ func TestConsistentHash_AddReplicaGroup_Basic(t *testing.T) {
 	c.AddReplicaGroup(1)
 	c.AddReplicaGroup(2)
 	reply := c.AddReplicaGroup(3)
-	fmt.Printf("add then from %d to %d", reply[0].From, reply[0].To)
+	if len(reply) == 2 {
+		t.Errorf("add then from %d to %d", reply[0].From, reply[0].To)
+	}
 }
 
 func TestConsistentHash_AddReplicaGroup_FirstAdd(t *testing.T) {
