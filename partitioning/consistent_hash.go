@@ -82,16 +82,16 @@ func (c *ConsistentHash) AddReplicaGroup(id uint64) []Reassignment {
 				pre = c.virtualNodes[i-1]
 			}
 			nextIndex := i
-			if i == len(c.virtualNodes)-1 {
+			if nextIndex == len(c.virtualNodes)-1 {
 				nextIndex = 0
 			} else {
-				nextIndex = i + 1
+				nextIndex = nextIndex + 1
 			}
 			for c.virtualNodes[nextIndex].id == id {
 				if nextIndex == len(c.virtualNodes)-1 {
 					nextIndex = 0
 				} else {
-					nextIndex = i + 1
+					nextIndex = nextIndex + 1
 				}
 			}
 			next := c.virtualNodes[nextIndex]
