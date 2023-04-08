@@ -89,5 +89,21 @@ func (t *RoutingTable) FindNextHop(id ID, level int32) ID {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
-	return ID{}
+	for currentLevel := level; currentLevel < DIGITS; currentLevel++ {
+		idx := id[currentLevel]
+		for k := 0; k < BASE; k++ {
+			// Finds a non-empty cell in the table
+			if len(t.Rows[currentLevel][idx]) != 0 {
+				// If the first node in the non-empty cell is non-local, return it.
+				if t.Rows[currentLevel][idx][0] != t.localId {
+					return t.Rows[currentLevel][idx][0]
+				}
+				// Jump down to the next level
+				break
+			}
+			// Move right along the level starting from that slot
+			idx = (idx + 1) % BASE
+		}
+	}
+	return t.localId
 }

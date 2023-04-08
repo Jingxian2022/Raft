@@ -107,6 +107,10 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 	level := idMsg.Level
 
 	// TODO(students): [Tapestry] Implement me!
+	nextHop := local.Table.FindNextHop(id, level)
+	if nextHop == local.Id {
+		
+	}
 	return nil, errors.New("FindRoot has not been implemented yet!")
 }
 

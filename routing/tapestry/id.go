@@ -102,7 +102,15 @@ func Hash(key string) (id ID) {
 // SharedPrefixLength returns the length of the prefix that is shared by the two IDs.
 func SharedPrefixLength(a ID, b ID) (i int) {
 	// TODO(students): [Tapestry] Implement me!
-	return
+	i = 0
+	for k := 0; k < DIGITS; k++ {
+		if a[k] == b[k] {
+			i += 1
+		} else {
+			break
+		}
+	}
+	return i
 }
 
 // Used by Tapestry's surrogate routing.  Given IDs newId and currentId, will id now route
@@ -123,6 +131,25 @@ func SharedPrefixLength(a ID, b ID) (i int) {
 // Returns false if currentId is the better choice or if newId == currentId.
 func (id ID) IsNewRoute(newId ID, currentId ID) bool {
 	// TODO(students): [Tapestry] Implement me!
+	currentPrefixLength := SharedPrefixLength(id, currentId)
+	newPrefixLength := SharedPrefixLength(id, newId)
+
+	if newPrefixLength > currentPrefixLength {
+		return true
+	} else if newPrefixLength > currentPrefixLength {
+		return false
+	}
+
+	for k := currentPrefixLength; k < DIGITS; k++ {
+		if newId[k] != currentId[k] {
+			newDist := (newId[k] - id[k]) % BASE
+			currentDist := (currentId[k] - id[k]) % BASE
+			if newDist < currentDist {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
@@ -142,7 +169,11 @@ func (id ID) IsNewRoute(newId ID, currentId ID) bool {
 // Return false if b is closer than a, or if a == b.
 func (id ID) Closer(a ID, b ID) bool {
 	// TODO(students): [Tapestry] Implement me!
-	return false
+
+	dist1 := big.NewInt(0).Abs(big.NewInt(0).Sub(id.Big(), a.Big()))
+	dist2 := big.NewInt(0).Abs(big.NewInt(0).Sub(id.Big(), b.Big()))
+
+	return dist1.Cmp(dist2) < 0
 }
 
 // Helper function: convert an ID to a big int.
