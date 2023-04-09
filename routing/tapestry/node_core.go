@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	pb "modist/proto"
+	"time"
 )
 
 // Store a blob on the local node and publish the key to the tapestry.
@@ -82,7 +83,46 @@ func (local *TapestryNode) Remove(key string) bool {
 //   - Keep trying to republish regardless of how the last attempt went
 func (local *TapestryNode) Publish(key string) (chan bool, error) {
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("Publish has not been implemented yet!")
+
+	// select {
+	// case val:=<-
+	INTERVAL := 5
+	retry := RETRIES
+	stopsignal := make(chan bool)
+
+	for retry > 0 {
+		retry--
+		rootmsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+		if err != nil {
+			continue
+		}
+		conn := local.Node.PeerConns[local.RetrieveID(MakeIDFromHexString(rootmsg.GetNext()))] // TODO: check
+		rootNode := pb.NewTapestryRPCClient(conn)
+		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.String(), Key: key})
+		if err != nil || !ok.Ok {
+			continue
+		}
+		go func() {
+			// set up a interval=5, if the interval is up, then call publish again
+			ticker := time.NewTicker(time.Duration(INTERVAL) * time.Second)
+
+			for {
+				select {
+				case <-ticker.C:
+					stop, _ := local.Publish(key)
+					select {
+					case <-stop:
+						fmt.Println("Stopped publishing key")
+						return
+					}
+				}
+			}
+		}()
+		stopsignal <- false
+		return stopsignal, nil
+	}
+	stopsignal <- false
+	return stopsignal, errors.New("Failed to publish key at the first attempt")
 }
 
 // Lookup look up the Tapestry nodes that are storing the blob for the specified key.
@@ -92,6 +132,31 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 // - Attempt up to RETRIES times
 func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 	// TODO(students): [Tapestry] Implement me!
+
+	retry := RETRIES
+	for retry > 0 {
+		retry--
+		rootmsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+		if err != nil {
+			continue
+		}
+		conn := local.Node.PeerConns[local.RetrieveID(MakeIDFromHexString(rootmsg.GetNext()))] // TODO: check
+		rootNode := pb.NewTapestryRPCClient(conn)
+		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
+		if err != nil {
+			continue
+		}
+		if !resp.GetIsRoot() {
+			continue // TODO: check if should return error
+		}
+		strings := resp.GetValues()
+		var ids []ID
+		for _, id := range strings {
+			ids = append(ids, MakeIDFromHexString(id))
+		}
+		return ids, nil
+	}
+
 	return nil, errors.New("Lookup has not been implemented yet!")
 }
 
@@ -143,7 +208,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 // The node that stores some data with key is registering themselves to us as an advertiser of the key.
 // - Check that we are the root node for the key, return true in pb.Ok if we are
 // - Add the node to the location map (local.locationsByKey.Register)
-//   - local.locationsByKey.Register kicks off a timer to remove the node if it's not advertised again
+//   - local.LocationsByKey.Register kicks off a timer to remove the node if it's not advertised again
 //     after TIMEOUT
 func (local *TapestryNode) Register(
 	ctx context.Context,
