@@ -192,6 +192,26 @@ func (local *TapestryNode) AddNodeMulticast(
 	local.log.Printf("Add node multicast %v at level %v\n", newNodeId, level)
 
 	// TODO(students): [Tapestry] Implement me!
+	targets := local.Table.GetLevel(level)
+	targets = append(targets, local.Id)
+
+	results := make([]string, 0)
+	for _, target := range targets {
+		conn := local.Node.PeerConns[local.RetrieveID(target)]
+		targetNode := pb.NewTapestryRPCClient(conn)
+		multicastRequest.Level = int32(level + 1)
+		targetNeighbors, err := targetNode.AddNodeMulticast(ctx, multicastRequest)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, targetNeighbors.Neighbors...)
+	}
+
+	err = local.AddRoute(newNodeId)
+	if err != nil {
+		return nil, err
+	}
+
 	return nil, errors.New("AddNodeMulticast has not been implemented yet!")
 }
 

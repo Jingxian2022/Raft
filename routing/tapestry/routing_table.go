@@ -79,7 +79,10 @@ func (t *RoutingTable) GetLevel(level int) (nodeIds []ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
-	return
+	for k := 0; k < BASE; k++ {
+		nodeIds = append(nodeIds, t.Rows[level][k]...)
+	}
+	return nodeIds
 }
 
 // FindNextHop searches the table for the closest next-hop node for the provided ID starting at the given level.

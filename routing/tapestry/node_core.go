@@ -107,11 +107,37 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 	level := idMsg.Level
 
 	// TODO(students): [Tapestry] Implement me!
-	nextHop := local.Table.FindNextHop(id, level)
-	if nextHop == local.Id {
-		
+	allToRemove := make([]string, 0)
+
+	for {
+		nextHop := local.Table.FindNextHop(id, level)
+
+		// If nextHop is self, then local node is the root. Return.
+		if nextHop == local.Id {
+			return &pb.RootMsg{Next: nextHop.String(), ToRemove: allToRemove}, nil
+		}
+
+		// Call FindRoot on nextHop
+		conn := local.Node.PeerConns[local.RetrieveID(nextHop)]
+		nextNode := pb.NewTapestryRPCClient(conn)
+		msg, err := nextNode.FindRoot(ctx, &pb.IdMsg{
+			Id:    idMsg.Id,
+			Level: level + 1,
+		})
+
+		if err != nil {
+			// Add nextHop to toRemove
+			local.Table.Remove(nextHop)
+			allToRemove = append(allToRemove, nextHop.String())
+			continue
+		}
+
+		// remove them from local routing table.
+		allToRemove = append(allToRemove, msg.ToRemove...)
+		local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
+		msg.ToRemove = allToRemove
+		return msg, nil
 	}
-	return nil, errors.New("FindRoot has not been implemented yet!")
 }
 
 // The node that stores some data with key is registering themselves to us as an advertiser of the key.
@@ -130,7 +156,19 @@ func (local *TapestryNode) Register(
 	key := registration.Key
 
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("Register has not been implemented yet!")
+	// id: the node that stores some data with key
+	node := Hash(key)
+	rootId, err := local.FindRootOnRemoteNode(from, node)
+	if err != nil {
+		return nil, err
+	}
+
+	if *rootId == local.Id {
+		// Add the node to the location map
+		local.LocationsByKey.Register(key, node, TIMEOUT)
+	}
+
+	return &pb.Ok{Ok: *rootId == local.Id}, nil
 }
 
 // Fetch checks that we are the root node for the requested key and
@@ -181,11 +219,28 @@ func (local *TapestryNode) Transfer(
 	}
 
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("Transfer has not been implemented yet!")
+	local.LocationsByKey.RegisterAll(nodeMap, TIMEOUT)
+	added, previous := local.Table.Add(from)
+	return &pb.Ok{Ok: added || previous != nil}, nil
 }
 
 // calls FindRoot on a remote node to find the root of the given id
 func (local *TapestryNode) FindRootOnRemoteNode(remoteNodeId ID, id ID) (*ID, error) {
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("FindRootOnRemoteNode has not been implemented yet!")
+	conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
+	remoteNode := pb.NewTapestryRPCClient(conn)
+	msg, err := remoteNode.FindRoot(ctx, &pb.IdMsg{
+		Id:    id.String(),
+		Level: 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rootId, err := ParseID(msg.Next)
+	if err != nil {
+		return nil, err
+	}
+
+	return &rootId, nil
 }
