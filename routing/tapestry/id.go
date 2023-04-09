@@ -55,25 +55,15 @@ func MakeIDFromHexString(id string) (convertedID ID) {
 // RetrieveID converts an ID to a uint64.
 // Used to convert TapestryNode.Id to node.ID. Note that an ID of 100... may correspond to a
 // uint64 of 1, 10, 100, etc. but we only want to select ones that are valid IDs for peer nodes.
-func (local *TapestryNode) RetrieveID(id ID) (convertedID uint64) {
+func (local *TapestryNode) RetrieveID(id ID) (convertedId uint64) {
 	var stringId string
-
-	// Find position of last digit that is not 0
-	j := DIGITS - 1
-	for j >= 0 && id[j] == 0 {
-		j--
-	}
-
-	for k := 0; k < DIGITS; k++ {
-		d := strconv.FormatUint(uint64(id[k]), 16)
+	for j := 0; j < DIGITS; j++ {
+		d := strconv.FormatUint(uint64(id[j]), 16)
 		stringId += d
 
-		if k >= j {
-			// For each possible ID, check if the converted ID is in PeerNodes
-			convertedId, _ := strconv.ParseUint(stringId, 16, 64)
-			if _, ok := local.Node.PeerNodes[convertedId]; ok {
-				return convertedId
-			}
+		convertedId, _ = strconv.ParseUint(stringId, 16, 64)
+		if _, ok := local.Node.PeerNodes[convertedId]; ok {
+			return convertedId
 		}
 	}
 
