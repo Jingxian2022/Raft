@@ -263,7 +263,23 @@ func (local *TapestryNode) Fetch(
 	key *pb.TapestryKey,
 ) (*pb.FetchedLocations, error) {
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("Fetch has not been implemented yet!")
+
+	id := Hash(key.GetKey())
+	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: id.String(), Level: 0})
+	if err != nil {
+		return nil, err
+	}
+
+	if rootId.GetNext() == local.Id.String() {
+		// return all nodes that are registered in the local location map for this key
+		ids := local.LocationsByKey.Get(key.GetKey())
+		nodesStoringKey := make([]string, len(ids))
+		for _, id := range ids {
+			nodesStoringKey = append(nodesStoringKey, id.String())
+		}
+		return &pb.FetchedLocations{IsRoot: true, Values: nodesStoringKey}, nil
+	}
+	return nil, errors.New("We are not the root for the requested key!")
 }
 
 // Retrieves the blob corresponding to a key

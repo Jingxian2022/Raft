@@ -25,6 +25,10 @@ func (local *TapestryNode) Kill() {
 // - If possible, give each backpointer a suitable alternative node from our routing table
 func (local *TapestryNode) Leave() error {
 	// TODO(students): [Tapestry] Implement me!
+	local.NotifyLeave(context.Background(), &pb.LeaveNotification{
+		From:        local.Id.String(),
+		Replacement: "", // FIXME: Implement me!
+	})
 	local.blobstore.DeleteAll()
 	go local.Node.GrpcServer.GracefulStop()
 	return errors.New("Leave has not been implemented yet!")
@@ -41,6 +45,9 @@ func (local *TapestryNode) NotifyLeave(
 	if err != nil {
 		return nil, err
 	}
+	// Remove references to the `from` node from our routing table and backpointers
+	local.Table.Remove(from)
+	local.Backpointers.Remove(from)
 	// Replacement can be an empty string so we don't want to parse it here
 	replacement := leaveNotification.Replacement
 
@@ -49,6 +56,15 @@ func (local *TapestryNode) NotifyLeave(
 		from,
 		replacement,
 	)
+
+	// If replacement is not an empty string, add replacement to our routing table
+	if replacement != "" {
+		replacementID, err := ParseID(replacement)
+		if err != nil {
+			return nil, err
+		}
+		local.Table.Add(replacementID)
+	}
 
 	// TODO(students): [Tapestry] Implement me!
 	return nil, errors.New("NotifyLeave has not been implemented yet!")
