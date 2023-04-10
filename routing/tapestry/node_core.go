@@ -282,7 +282,7 @@ func (local *TapestryNode) Fetch(
 		}
 		return &pb.FetchedLocations{IsRoot: true, Values: nodesStoringKey}, nil
 	}
-	return nil, errors.New("We are not the root for the requested key!")
+	return &pb.FetchedLocations{IsRoot: false}, nil
 }
 
 // Retrieves the blob corresponding to a key
