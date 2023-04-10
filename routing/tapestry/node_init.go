@@ -15,6 +15,7 @@ import (
 	"log"
 	"modist/orchestrator/node"
 	pb "modist/proto"
+	"sort"
 	"time"
 )
 
@@ -146,7 +147,40 @@ func (local *TapestryNode) Join(remoteNodeId ID) error {
 	}
 
 	// TODO(students): [Tapestry] Implement me!
-	return errors.New("Join has not been implemented yet!")
+	n := SharedPrefixLength(local.Id, remoteNodeId)
+	err = local.traverseBackpointers(neighborIds, n)
+	return err
+}
+
+func (local *TapestryNode) traverseBackpointers(neighbors []ID, level int) error {
+	for k := level; k >= 0; k-- {
+		sort.SliceStable(neighbors, func(i, j int) bool {
+			return local.Id.Closer(neighbors[i], neighbors[j])
+		})
+		if len(neighbors) > K {
+			neighbors = neighbors[:K]
+		}
+		nextNeighbors := idsToStringSlice(neighbors)
+		for _, neighbor := range neighbors {
+			conn := local.Node.PeerConns[local.RetrieveID(neighbor)]
+			neighborNode := pb.NewTapestryRPCClient(conn)
+			backPointers, err := neighborNode.GetBackpointers(context.Background(), &pb.BackpointerRequest{From: local.Id.String(), Level: int32(k)})
+			if err != nil {
+				return errors.New("Failed to getBackpointers!")
+			}
+			nextNeighbors = append(nextNeighbors, backPointers.Neighbors...)
+		}
+		nextNeighbors = Merge(nextNeighbors)
+		for _, neighbor := range nextNeighbors {
+			neighborId, err := ParseID(neighbor)
+			if err != nil {
+				return errors.New("Failed to add to routing table!")
+			}
+			local.AddRoute(neighborId)
+		}
+		neighbors, _ = stringSliceToIds(nextNeighbors)
+	}
+	return nil
 }
 
 // AddNode adds node to the tapestry
@@ -178,7 +212,7 @@ func (local *TapestryNode) AddNode(
 // - Propagate the multicast to the specified row in our routing table and await multicast responses
 // - Return the merged neighbor set
 //
-// - note: `local.table.GetLevel` does not return the local node so you must manually add this to the neighbors set
+// - note: `local.table.GetLevel` does not return the local node, so you must manually add this to the neighbors set
 func (local *TapestryNode) AddNodeMulticast(
 	ctx context.Context,
 	multicastRequest *pb.MulticastRequest,
@@ -194,13 +228,12 @@ func (local *TapestryNode) AddNodeMulticast(
 	// TODO(students): [Tapestry] Implement me!
 	targets := local.Table.GetLevel(level)
 	targets = append(targets, local.Id)
-
 	results := make([]string, 0)
+
 	for _, target := range targets {
 		conn := local.Node.PeerConns[local.RetrieveID(target)]
 		targetNode := pb.NewTapestryRPCClient(conn)
-		multicastRequest.Level = int32(level + 1)
-		targetNeighbors, err := targetNode.AddNodeMulticast(ctx, multicastRequest)
+		targetNeighbors, err := targetNode.AddNodeMulticast(ctx, &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +245,32 @@ func (local *TapestryNode) AddNodeMulticast(
 		return nil, err
 	}
 
-	return nil, errors.New("AddNodeMulticast has not been implemented yet!")
+	objects := local.LocationsByKey.GetTransferRegistrations(local.Id, newNodeId)
+	conn := local.Node.PeerConns[local.RetrieveID(newNodeId)]
+	newNode := pb.NewTapestryRPCClient(conn)
+
+	transferData := pb.TransferData{From: local.Id.String()}
+	for key, set := range objects {
+		transferData.Data[key] = &pb.Neighbors{Neighbors: idsToStringSlice(set)}
+	}
+	_, err = newNode.Transfer(ctx, &transferData)
+	if err != nil {
+		local.LocationsByKey.RegisterAll(objects, TIMEOUT)
+	}
+
+	neighbors := pb.Neighbors{Neighbors: Merge(results)}
+	return &neighbors, nil
+}
+
+func Merge(input []string) (output []string) {
+	tmp := map[string]struct{}{}
+	for _, str := range input {
+		tmp[str] = struct{}{}
+	}
+	for str := range tmp {
+		output = append(output, str)
+	}
+	return output
 }
 
 // AddBackpointer adds the from node to our backpointers, and possibly add the node to our
@@ -316,5 +374,22 @@ func (local *TapestryNode) RemoveBadNodes(
 // - If an old node was removed from the routing table, notify the old node of a removed backpointer
 func (local *TapestryNode) AddRoute(remoteNodeId ID) error {
 	// TODO(students): [Tapestry] Implement me!
-	return errors.New("AddRoute has not been implemented yet!")
+	added, previous := local.Table.Add(remoteNodeId)
+	if added {
+		conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
+		remoteNode := pb.NewTapestryRPCClient(conn)
+		_, err := remoteNode.AddBackpointer(context.Background(), &pb.NodeMsg{Id: local.String()})
+		if err != nil {
+			return fmt.Errorf("Error adding backpointer.")
+		}
+	}
+	if previous != nil {
+		conn := local.Node.PeerConns[local.RetrieveID(*previous)]
+		previousNode := pb.NewTapestryRPCClient(conn)
+		_, err := previousNode.RemoveBackpointer(context.Background(), &pb.NodeMsg{Id: local.String()})
+		if err != nil {
+			return fmt.Errorf("Error removing backpointer.")
+		}
+	}
+	return nil
 }

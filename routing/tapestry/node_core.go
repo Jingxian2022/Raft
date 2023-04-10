@@ -84,45 +84,64 @@ func (local *TapestryNode) Remove(key string) bool {
 func (local *TapestryNode) Publish(key string) (chan bool, error) {
 	// TODO(students): [Tapestry] Implement me!
 
-	// select {
-	// case val:=<-
-	INTERVAL := 5
-	retry := RETRIES
-	stopsignal := make(chan bool)
+	stopSignal := make(chan bool)
 
-	for retry > 0 {
-		retry--
-		rootmsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+	err := local.attemptToPublish(key)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		// if the interval is up, then call publish again
+		ticker := time.NewTicker(REPUBLISH)
+
+		defer ticker.Stop()
+
+		for {
+			select {
+			// Keep trying to republish regardless of how the last attempt went
+			case <-ticker.C:
+				_ = local.attemptToPublish(key)
+			// If receiving from the channel, stop republishing
+			case <-stopSignal:
+				return
+			}
+		}
+	}()
+
+	return stopSignal, nil
+}
+
+func (local *TapestryNode) attemptToPublish(key string) error {
+	errs := make([]error, 0, RETRIES)
+	for k := 0; k < RETRIES; k++ {
+		// Find the root node for the key
+		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 		if err != nil {
+			errs = append(errs, err)
 			continue
 		}
-		conn := local.Node.PeerConns[local.RetrieveID(MakeIDFromHexString(rootmsg.GetNext()))] // TODO: check
+
+		// Register the local node on the root
+		rootId, err := ParseID(rootMsg.GetNext())
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
 		rootNode := pb.NewTapestryRPCClient(conn)
 		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.String(), Key: key})
 		if err != nil || !ok.Ok {
+			if err == nil {
+				err = fmt.Errorf("The root node does not believe itself is the root.\n")
+			}
+			errs = append(errs, err)
 			continue
 		}
-		go func() {
-			// set up a interval=5, if the interval is up, then call publish again
-			ticker := time.NewTicker(time.Duration(INTERVAL) * time.Second)
-
-			for {
-				select {
-				case <-ticker.C:
-					stop, _ := local.Publish(key)
-					select {
-					case <-stop:
-						fmt.Println("Stopped publishing key")
-						return
-					}
-				}
-			}
-		}()
-		stopsignal <- false
-		return stopsignal, nil
+		// Succeed
+		return nil
 	}
-	stopsignal <- false
-	return stopsignal, errors.New("Failed to publish key at the first attempt")
+	return errs[RETRIES-1]
 }
 
 // Lookup look up the Tapestry nodes that are storing the blob for the specified key.
@@ -136,11 +155,16 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 	retry := RETRIES
 	for retry > 0 {
 		retry--
-		rootmsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 		if err != nil {
 			continue
 		}
-		conn := local.Node.PeerConns[local.RetrieveID(MakeIDFromHexString(rootmsg.GetNext()))] // TODO: check
+
+		rootId, err := ParseID(rootMsg.GetNext())
+		if err != nil {
+			continue
+		}
+		conn := local.Node.PeerConns[local.RetrieveID(rootId)] // TODO: check
 		rootNode := pb.NewTapestryRPCClient(conn)
 		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
 		if err != nil {
@@ -149,15 +173,11 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 		if !resp.GetIsRoot() {
 			continue // TODO: check if should return error
 		}
-		strings := resp.GetValues()
-		var ids []ID
-		for _, id := range strings {
-			ids = append(ids, MakeIDFromHexString(id))
-		}
-		return ids, nil
+
+		return stringSliceToIds(resp.GetValues())
 	}
 
-	return nil, errors.New("Lookup has not been implemented yet!")
+	return nil, errors.New("Lookup failed!")
 }
 
 // FindRoot returns the root for the id in idMsg by recursive RPC calls on the next hop found in our routing table
@@ -294,7 +314,7 @@ func (local *TapestryNode) FindRootOnRemoteNode(remoteNodeId ID, id ID) (*ID, er
 	// TODO(students): [Tapestry] Implement me!
 	conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
 	remoteNode := pb.NewTapestryRPCClient(conn)
-	msg, err := remoteNode.FindRoot(ctx, &pb.IdMsg{
+	msg, err := remoteNode.FindRoot(context.Background(), &pb.IdMsg{
 		Id:    id.String(),
 		Level: 0,
 	})
