@@ -114,14 +114,19 @@ func (t *RoutingTable) GetLevel(level int) (nodeIds []ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
-	// FIX
-	if level < 0 || level >= DIGITS {
-		return nil
-	}
 
 	for k := 0; k < BASE; k++ {
-		nodeIds = append(nodeIds, t.Rows[level][k]...)
+		for i := 0; i < len(t.Rows[level][k]); i++ {
+			if t.Rows[level][k][i] != t.localId {
+				nodeIds = append(nodeIds, t.Rows[level][k][i])
+			}
+		}
 	}
+
+	// for k := 0; k < BASE; k++ {
+	// 	nodeIds = append(nodeIds, t.Rows[level][k]...)
+	// }
+
 	return nodeIds
 }
 

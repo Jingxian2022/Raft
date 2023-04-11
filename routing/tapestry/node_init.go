@@ -231,6 +231,9 @@ func (local *TapestryNode) AddNodeMulticast(
 	results := make([]string, 0)
 
 	for _, target := range targets {
+		if multicastRequest.Level+1 == 40 {
+			break
+		}
 		conn := local.Node.PeerConns[local.RetrieveID(target)]
 		targetNode := pb.NewTapestryRPCClient(conn)
 		targetNeighbors, err := targetNode.AddNodeMulticast(ctx, &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
