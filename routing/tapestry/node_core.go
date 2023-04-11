@@ -199,6 +199,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 
 		// If nextHop is self, then local node is the root. Return.
 		if nextHop == local.Id {
+			local.log.Printf("Root found %v", nextHop)
 			return &pb.RootMsg{Next: nextHop.String(), ToRemove: allToRemove}, nil
 		}
 
@@ -212,6 +213,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 
 		if err != nil {
 			// Add nextHop to toRemove
+			local.log.Printf("Error finding root")
 			local.Table.Remove(nextHop)
 			allToRemove = append(allToRemove, nextHop.String())
 			continue
@@ -221,6 +223,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 		allToRemove = append(allToRemove, msg.ToRemove...)
 		local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
 		msg.ToRemove = allToRemove
+		local.log.Printf("Root found %v", msg.Next)
 		return msg, nil
 	}
 }
