@@ -10,8 +10,10 @@ import (
 
 func TestSampleTapestrySetup(t *testing.T) {
 	tap, _ := MakeTapestries(true, "1", "3", "5", "7") //Make a tapestry with these ids
+	// DEBUG: backpointers are empty
 	fmt.Printf("length of tap %d\n", len(tap))
 	KillTapestries(tap[1], tap[2]) //Kill off two of them.
+	// DEBUG: can't find 1 in 7's routing table, also 7 is not in 1's routing table
 	resp, _ := tap[0].FindRoot(
 		context.Background(),
 		CreateIDMsg("2", 0),

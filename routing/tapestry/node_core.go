@@ -324,6 +324,8 @@ func (local *TapestryNode) Transfer(
 
 	// TODO(students): [Tapestry] Implement me!
 	local.LocationsByKey.RegisterAll(nodeMap, TIMEOUT)
+	// DEBUG
+	// if from != local.Id {
 	added, previous := local.Table.Add(from)
 	return &pb.Ok{Ok: added || previous != nil}, nil
 }

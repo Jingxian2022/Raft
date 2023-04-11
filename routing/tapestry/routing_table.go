@@ -57,6 +57,7 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	// TODO: n == 40, error
 	n := SharedPrefixLength(t.localId, remoteNodeId)
 	slot := t.Rows[n][remoteNodeId[n]]
 	slotLength := len(slot)
@@ -75,8 +76,12 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 		}
 	}
 	if pos != SLOTSIZE {
-		slot[pos] = remoteNodeId
-		added = true
+		// slot[pos] = remoteNodeId
+		// DEBUG: if slotlength==0, pos==0, will not be added
+		if pos < slotLength {
+			slot = append(slot, remoteNodeId)
+			added = true
+		}
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
 	return added, previous
@@ -115,6 +120,7 @@ func (t *RoutingTable) GetLevel(level int) (nodeIds []ID) {
 
 	// TODO(students): [Tapestry] Implement me!
 
+	nodeIds = make([]ID, 0)
 	for k := 0; k < BASE; k++ {
 		for i := 0; i < len(t.Rows[level][k]); i++ {
 			if t.Rows[level][k][i] != t.localId {
@@ -153,5 +159,33 @@ func (t *RoutingTable) FindNextHop(id ID, level int32) ID {
 			idx = (idx + 1) % BASE
 		}
 	}
+
+	// for currentLevel := level; currentLevel < DIGITS; currentLevel++ {
+	// 	flag_jumplevel := false
+	// 	// iterate through the slots in the level
+	// 	for currentSlot := id[currentLevel]; currentSlot < BASE; currentSlot++ {
+	// 		// Finds a non-empty cell in the table
+	// 		if len(t.Rows[currentLevel][currentSlot]) != 0 {
+	// 			// iterate through the nodes in the cell
+	// 			for i := 0; i < len(t.Rows[currentLevel][currentSlot]); i++ {
+	// 				// If the first node in the non-empty cell is non-local, return it.
+	// 				if t.Rows[currentLevel][currentSlot][i] != t.localId {
+	// 					return t.Rows[currentLevel][currentSlot][i]
+	// 				}
+	// 				//  If the first node in the non-empty cell is local, we need to keep searching.
+	// 				// Jump down to the first slot of the next level
+	// 				flag_jumplevel = true
+	// 				break // jump to next level
+	// 			}
+	// 		}
+	// 		if flag_jumplevel {
+	// 			break // jump to next level
+	// 		}
+	// 	}
+	// 	if flag_jumplevel {
+	// 		continue
+	// 	}
+	// 	return t.localId
+	// }
 	return t.localId
 }
