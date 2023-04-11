@@ -25,10 +25,36 @@ func (local *TapestryNode) Kill() {
 // - If possible, give each backpointer a suitable alternative node from our routing table
 func (local *TapestryNode) Leave() error {
 	// TODO(students): [Tapestry] Implement me!
-	local.NotifyLeave(context.Background(), &pb.LeaveNotification{
-		From:        local.Id.String(),
-		Replacement: "", // FIXME: Implement me!
-	})
+	// find the nodes in our backpointers
+	for level := 0; level < 40; level++ {
+		for _, node := range local.Backpointers.Get(level) {
+			// Notify the nodes in our backpointers that we are leaving by calling NotifyLeave
+			// for each find a replacement, call NotifyLeave on each backpointer with the replacement
+			replacement := ""
+			cnt := 0
+			for replacement == "" {
+				cnt++
+				for _, node := range local.Table.GetLevel(level + cnt) {
+					if (node != ID{}) {
+						replacement = node.String()
+						break
+					}
+				}
+				// can't find a replacement
+				break
+			}
+			conn := local.Node.PeerConns[node.Big().Uint64()]
+			toNotify := pb.NewTapestryRPCClient(conn)
+			_, err := toNotify.NotifyLeave(context.Background(), &pb.LeaveNotification{
+				From:        local.Id.String(),
+				Replacement: replacement,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	local.blobstore.DeleteAll()
 	go local.Node.GrpcServer.GracefulStop()
 	return errors.New("Leave has not been implemented yet!")
@@ -67,5 +93,5 @@ func (local *TapestryNode) NotifyLeave(
 	}
 
 	// TODO(students): [Tapestry] Implement me!
-	return nil, errors.New("NotifyLeave has not been implemented yet!")
+	return &pb.Ok{Ok: true}, nil
 }

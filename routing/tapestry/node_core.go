@@ -164,7 +164,7 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 		if err != nil {
 			continue
 		}
-		conn := local.Node.PeerConns[local.RetrieveID(rootId)] // TODO: check
+		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
 		rootNode := pb.NewTapestryRPCClient(conn)
 		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
 		if err != nil {
