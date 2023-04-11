@@ -8,6 +8,7 @@
 package tapestry
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -62,26 +63,37 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	slot := t.Rows[n][remoteNodeId[n]]
 	slotLength := len(slot)
 
+	fmt.Printf("Adding to slot %v on row %v\n", remoteNodeId[n], n)
+
 	pos := slotLength
 	for k := slotLength - 1; k >= 0; k-- {
+		// if already exists
+		if slot[k] == remoteNodeId {
+			return false, nil
+		}
 		if t.localId.Closer(remoteNodeId, slot[k]) {
-			if k < SLOTSIZE-1 {
-				slot[k+1] = slot[k]
-			} else {
+			// replace last one with new node when slot is full
+			if k == SLOTSIZE-1 {
 				previous = &slot[k]
+			} else if k == slotLength-1 { // copy slot[k] to slot[k+1]
+				slot = append(slot, slot[k])
+			} else {
+				slot[k+1] = slot[k]
 			}
-			pos = k
+			pos = k // pos to insert new node ID
 		} else {
 			break
 		}
 	}
-	if pos != SLOTSIZE {
-		// slot[pos] = remoteNodeId
-		// DEBUG: if slotlength==0, pos==0, will not be added
-		if pos < slotLength {
-			slot = append(slot, remoteNodeId)
-			added = true
-		}
+
+	if pos == slotLength && pos != SLOTSIZE {
+		slot = append(slot, remoteNodeId)
+		added = true
+		fmt.Printf("case 1\n")
+	} else if pos != SLOTSIZE {
+		slot[pos] = remoteNodeId
+		added = true
+		fmt.Printf("case 2\n")
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
 	return added, previous
@@ -96,6 +108,9 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	if t.localId == remoteNodeId {
+		return false
+	}
 	n := SharedPrefixLength(t.localId, remoteNodeId)
 	slot := t.Rows[n][remoteNodeId[n]]
 	pos := -1
@@ -107,9 +122,10 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 	}
 	if pos != -1 {
 		slot = append(slot[:pos], slot[pos+1:]...)
+		wasRemoved = true
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
-	return
+	return wasRemoved
 }
 
 // GetLevel gets ALL nodes on the specified level of the routing table, EXCLUDING the local node.
@@ -128,10 +144,6 @@ func (t *RoutingTable) GetLevel(level int) (nodeIds []ID) {
 			}
 		}
 	}
-
-	// for k := 0; k < BASE; k++ {
-	// 	nodeIds = append(nodeIds, t.Rows[level][k]...)
-	// }
 
 	return nodeIds
 }
