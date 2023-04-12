@@ -86,7 +86,6 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 
 	stopSignal := make(chan bool)
 
-	// go func() {
 	err := local.attemptToPublish(key)
 	if err != nil {
 		return nil, err
@@ -139,6 +138,8 @@ func (local *TapestryNode) attemptToPublish(key string) error {
 			errs = append(errs, err)
 			continue
 		}
+		local.log.Printf("published key %v to root %v------------------\n", key, rootId.String())
+
 		// Succeed
 		return nil
 	}
@@ -154,35 +155,31 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 	// TODO(students): [Tapestry] Implement me!
 
 	retry := RETRIES
-	id := make(chan []ID)
-	for retry > 0 && <-id == nil {
+	for retry > 0 {
 		retry--
-		go func() {
-			rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
-			if err != nil {
-				return
-			}
-			rootId, err := ParseID(rootMsg.GetNext())
-			if err != nil {
-				return
-			}
-			conn := local.Node.PeerConns[local.RetrieveID(rootId)]
-			rootNode := pb.NewTapestryRPCClient(conn)
-			resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
-			if err != nil {
-				return
-			}
-			if !resp.GetIsRoot() {
-				return
-			}
-			tmp, _ := stringSliceToIds(resp.GetValues())
-			id <- tmp
-		}()
+		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+		if err != nil {
+			continue
+		}
 
-		// return stringSliceToIds(resp.GetValues())
+		rootId, err := ParseID(rootMsg.GetNext())
+		if err != nil {
+			continue
+		}
+		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
+		rootNode := pb.NewTapestryRPCClient(conn)
+		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
+		if err != nil {
+			continue
+		}
+		if !resp.GetIsRoot() {
+			continue // TODO: check if should return error
+		}
+
+		return stringSliceToIds(resp.GetValues())
 	}
 
-	return <-id, nil
+	return nil, errors.New("Lookup failed!")
 }
 
 // FindRoot returns the root for the id in idMsg by recursive RPC calls on the next hop found in our routing table
@@ -282,7 +279,7 @@ func (local *TapestryNode) Fetch(
 		// return all nodes that are registered in the local location map for this key
 		ids := local.LocationsByKey.Get(key.GetKey())
 		if ids == nil {
-			return nil, errors.New("Nodes not found")
+			return nil, nil
 		}
 		nodesStoringKey := make([]string, 0)
 		for _, id := range ids {
