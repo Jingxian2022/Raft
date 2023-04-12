@@ -71,9 +71,7 @@ func (local *TapestryNode) NotifyLeave(
 	if err != nil {
 		return nil, err
 	}
-	// Remove references to the `from` node from our routing table and backpointers
-	local.Table.Remove(from)
-	local.Backpointers.Remove(from)
+
 	// Replacement can be an empty string so we don't want to parse it here
 	replacement := leaveNotification.Replacement
 
@@ -83,13 +81,18 @@ func (local *TapestryNode) NotifyLeave(
 		replacement,
 	)
 
+	// Remove references to the `from` node from our routing table and backpointers
+	local.Table.Remove(from)
+	local.Backpointers.Remove(from)
+
 	// If replacement is not an empty string, add replacement to our routing table
-	if replacement != "" {
-		replacementID, err := ParseID(replacement)
-		if err != nil {
-			return nil, err
-		}
-		local.Table.Add(replacementID)
+	replacementID, err := ParseID(replacement)
+	if err != nil {
+		return nil, err
+	}
+	err = local.AddRoute(replacementID)
+	if err != nil {
+		return nil, err
 	}
 
 	// TODO(students): [Tapestry] Implement me!

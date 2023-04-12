@@ -113,35 +113,31 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 }
 
 func (local *TapestryNode) attemptToPublish(key string) error {
-	errs := make([]error, 0, RETRIES)
 	for k := 0; k < RETRIES; k++ {
 		// Find the root node for the key
 		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 		if err != nil {
-			errs = append(errs, err)
 			continue
 		}
 
 		// Register the local node on the root
 		rootId, err := ParseID(rootMsg.GetNext())
 		if err != nil {
-			errs = append(errs, err)
 			continue
 		}
 		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
 		rootNode := pb.NewTapestryRPCClient(conn)
-		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.String(), Key: key})
+		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.Id.String(), Key: key})
 		if err != nil || !ok.Ok {
 			if err == nil {
 				err = fmt.Errorf("The root node does not believe itself is the root.\n")
 			}
-			errs = append(errs, err)
 			continue
 		}
 		// Succeed
 		return nil
 	}
-	return errs[RETRIES-1]
+	return fmt.Errorf("Failed to publish %v", key)
 }
 
 // Lookup look up the Tapestry nodes that are storing the blob for the specified key.
