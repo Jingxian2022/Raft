@@ -86,12 +86,11 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 
 	stopSignal := make(chan bool)
 
-	go func() {
-		local.attemptToPublish(key)
-	}()
-	// if err != nil {
-	// 	return nil, err
-	// }
+	// go func() {
+	err := local.attemptToPublish(key)
+	if err != nil {
+		return nil, err
+	}
 
 	go func() {
 		// if the interval is up, then call publish again
