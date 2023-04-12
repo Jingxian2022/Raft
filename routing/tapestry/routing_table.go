@@ -58,6 +58,9 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	if t.localId == remoteNodeId {
+		return false, nil
+	}
 	n := SharedPrefixLength(t.localId, remoteNodeId)
 	slot := t.Rows[n][remoteNodeId[n]]
 	slotLength := len(slot)
@@ -88,11 +91,11 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	if pos == slotLength && pos != SLOTSIZE {
 		slot = append(slot, remoteNodeId)
 		added = true
-		fmt.Printf("case 1\n")
+		fmt.Printf("case 1: adding %v to %v\n", remoteNodeId, t.localId)
 	} else if pos != SLOTSIZE {
 		slot[pos] = remoteNodeId
 		added = true
-		fmt.Printf("case 2\n")
+		fmt.Printf("case 2: adding %v to %v\n", remoteNodeId, t.localId)
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
 	return added, previous
@@ -120,6 +123,7 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 		}
 	}
 	if pos != -1 {
+		fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
 		slot = append(slot[:pos], slot[pos+1:]...)
 		wasRemoved = true
 	}
