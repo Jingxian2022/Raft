@@ -214,7 +214,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 
 		if err != nil {
 			// Add nextHop to toRemove
-			local.log.Printf("Error finding root")
+			local.log.Printf("Error finding root for %v", id)
 			local.Table.Remove(nextHop)
 			allToRemove = append(allToRemove, nextHop.String())
 			continue

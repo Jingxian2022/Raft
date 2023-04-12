@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	pb "modist/proto"
 	"testing"
 	"time"
 )
@@ -22,6 +23,13 @@ func TestSampleTapestrySetup(t *testing.T) {
 		t.Errorf("Failed to kill successfully")
 	}
 
+}
+
+func TestFindRoot(t *testing.T) {
+	tap, _ := MakeTapestries(true, "1234", "1244") //Make a tapestry with these ids
+	// DEBUG: backpointers are empty
+	fmt.Printf("length of tap %d\n", len(tap))
+	tap[0].FindRoot(context.Background(), &pb.IdMsg{Id: "1200000000000000000000000000000000000000"})
 }
 
 func TestSampleTapestrySearch(t *testing.T) {
