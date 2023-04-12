@@ -110,6 +110,7 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
 	if t.localId == remoteNodeId {
 		return false
 	}
