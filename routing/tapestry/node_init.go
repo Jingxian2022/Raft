@@ -256,7 +256,10 @@ func (local *TapestryNode) AddNodeMulticast(
 
 				conn := local.Node.PeerConns[local.RetrieveID(target)]
 				targetNode := pb.NewTapestryRPCClient(conn)
-				targetNeighbors, _ := targetNode.AddNodeMulticast(context.Background(), &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
+				targetNeighbors, err := targetNode.AddNodeMulticast(context.Background(), &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
+				if err != nil {
+					local.RemoveBadNodes(context.Background(), &pb.Neighbors{Neighbors: idsToStringSlice([]ID{newNodeId})})
+				}
 				mtx.Lock()
 				*results = append(*results, targetNeighbors.Neighbors...)
 				mtx.Unlock()
@@ -267,12 +270,14 @@ func (local *TapestryNode) AddNodeMulticast(
 		wg.Wait()
 		//local.log.Printf("wait2")
 
+		results = append(results, idsToStringSlice(targets)...)
+
 		results = Merge(results)
-		for _, res := range results {
-			if res == local.Id.String() {
-				return &pb.Neighbors{Neighbors: results}, nil
-			}
-		}
+		//for _, res := range results {
+		//	if res == local.Id.String() {
+		//		return &pb.Neighbors{Neighbors: results}, nil
+		//	}
+		//}
 
 		//local.Output()
 		err = local.AddRoute(newNodeId)
@@ -291,6 +296,8 @@ func (local *TapestryNode) AddNodeMulticast(
 			_, err = newNode.Transfer(ctx, &transferData)
 			if err != nil {
 				local.LocationsByKey.RegisterAll(objects, TIMEOUT)
+				// removebadnodes
+				local.RemoveBadNodes(context.Background(), &pb.Neighbors{Neighbors: idsToStringSlice([]ID{newNodeId})})
 			}
 		}()
 
