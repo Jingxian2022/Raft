@@ -207,7 +207,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 		// Call FindRoot on nextHop
 		conn := local.Node.PeerConns[local.RetrieveID(nextHop)]
 		nextNode := pb.NewTapestryRPCClient(conn)
-		msg, err := nextNode.FindRoot(ctx, &pb.IdMsg{
+		msg, err := nextNode.FindRoot(context.Background(), &pb.IdMsg{
 			Id:    id.String(),
 			Level: level + 1,
 		})
@@ -215,17 +215,16 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 		if err != nil {
 			// Add nextHop to toRemove
 			local.log.Printf("Error finding root for %v", id)
-			local.Table.Remove(nextHop)
 			allToRemove = append(allToRemove, nextHop.String())
+			local.Table.Remove(nextHop)
 			continue
 		}
 
 		// remove them from local routing table.
 		allToRemove = append(allToRemove, msg.ToRemove...)
-		local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
-		msg.ToRemove = allToRemove
+		//local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
 		local.log.Printf("Root found %v", msg.Next)
-		return msg, nil
+		return &pb.RootMsg{Next: msg.Next, ToRemove: allToRemove}, nil
 	}
 }
 

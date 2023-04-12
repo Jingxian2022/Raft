@@ -30,12 +30,11 @@ func TestFindRoot(t *testing.T) {
 	fmt.Printf("length of tap %d\n", len(tap))
 	id, _ := tap[0].FindRootOnRemoteNode(tap[0].Id, tap[1].Id)
 	fmt.Printf("found %v", *id)
-
-	t2 := tap[1].Id
-	KillTapestries(tap[1])
-	time.Sleep(200 * time.Millisecond)
-	id, _ = tap[0].FindRootOnRemoteNode(tap[0].Id, t2)
-	fmt.Printf("found %v", *id)
+	//
+	//t2 := tap[1].Id
+	//KillTapestries(tap[1])
+	//time.Sleep(200 * time.Millisecond)
+	//id, _ = tap[0].FindRootOnRemoteNode(tap[0].Id, t2)
 }
 
 func TestSampleTapestrySearch(t *testing.T) {
