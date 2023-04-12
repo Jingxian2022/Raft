@@ -208,7 +208,7 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 		conn := local.Node.PeerConns[local.RetrieveID(nextHop)]
 		nextNode := pb.NewTapestryRPCClient(conn)
 		msg, err := nextNode.FindRoot(ctx, &pb.IdMsg{
-			Id:    idMsg.Id,
+			Id:    id.String(),
 			Level: level + 1,
 		})
 
