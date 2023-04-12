@@ -258,7 +258,7 @@ func (local *TapestryNode) AddNodeMulticast(
 				targetNode := pb.NewTapestryRPCClient(conn)
 				targetNeighbors, err := targetNode.AddNodeMulticast(context.Background(), &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
 				if err != nil {
-					local.RemoveBadNodes(context.Background(), &pb.Neighbors{Neighbors: idsToStringSlice([]ID{newNodeId})})
+					local.RemoveBadNodes(context.Background(), &pb.Neighbors{Neighbors: idsToStringSlice([]ID{target})})
 				}
 				mtx.Lock()
 				*results = append(*results, targetNeighbors.Neighbors...)
