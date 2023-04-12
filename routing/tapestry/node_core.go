@@ -86,7 +86,9 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 
 	stopSignal := make(chan bool)
 
-	local.attemptToPublish(key)
+	go func() {
+		local.attemptToPublish(key)
+	}()
 	// if err != nil {
 	// 	return nil, err
 	// }
@@ -153,31 +155,35 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 	// TODO(students): [Tapestry] Implement me!
 
 	retry := RETRIES
-	for retry > 0 {
+	id := make(chan []ID)
+	for retry > 0 && <-id == nil {
 		retry--
-		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
-		if err != nil {
-			continue
-		}
+		go func() {
+			rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+			if err != nil {
+				return
+			}
+			rootId, err := ParseID(rootMsg.GetNext())
+			if err != nil {
+				return
+			}
+			conn := local.Node.PeerConns[local.RetrieveID(rootId)]
+			rootNode := pb.NewTapestryRPCClient(conn)
+			resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
+			if err != nil {
+				return
+			}
+			if !resp.GetIsRoot() {
+				return
+			}
+			tmp, _ := stringSliceToIds(resp.GetValues())
+			id <- tmp
+		}()
 
-		rootId, err := ParseID(rootMsg.GetNext())
-		if err != nil {
-			continue
-		}
-		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
-		rootNode := pb.NewTapestryRPCClient(conn)
-		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
-		if err != nil {
-			continue
-		}
-		if !resp.GetIsRoot() {
-			continue // TODO: check if should return error
-		}
-
-		return stringSliceToIds(resp.GetValues())
+		// return stringSliceToIds(resp.GetValues())
 	}
 
-	return nil, errors.New("Lookup failed!")
+	return <-id, nil
 }
 
 // FindRoot returns the root for the id in idMsg by recursive RPC calls on the next hop found in our routing table
