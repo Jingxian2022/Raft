@@ -138,8 +138,6 @@ func (local *TapestryNode) attemptToPublish(key string) error {
 			errs = append(errs, err)
 			continue
 		}
-		local.log.Printf("published key %v to root %v------------------\n", key, rootId.String())
-
 		// Succeed
 		return nil
 	}
