@@ -94,11 +94,11 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	if pos == slotLength && pos != SLOTSIZE {
 		slot = append(slot, remoteNodeId)
 		added = true
-		fmt.Printf("case 1: adding %v to %v\n", remoteNodeId, t.localId)
+		//fmt.Printf("case 1: adding %v to %v\n", remoteNodeId, t.localId)
 	} else if pos != SLOTSIZE {
 		slot[pos] = remoteNodeId
 		added = true
-		fmt.Printf("case 2: adding %v to %v\n", remoteNodeId, t.localId)
+		//fmt.Printf("case 2: adding %v to %v\n", remoteNodeId, t.localId)
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
 	if replaced {
