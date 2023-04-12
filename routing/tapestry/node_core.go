@@ -318,8 +318,12 @@ func (local *TapestryNode) Transfer(
 
 	// TODO(students): [Tapestry] Implement me!
 	local.LocationsByKey.RegisterAll(nodeMap, TIMEOUT)
-	added, previous := local.Table.Add(from)
-	return &pb.Ok{Ok: added || previous != nil}, nil
+	//added, previous := local.Table.Add(from)
+	err = local.AddRoute(from)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Ok{Ok: true}, nil
 }
 
 // calls FindRoot on a remote node to find the root of the given id
