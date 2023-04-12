@@ -8,7 +8,7 @@ import (
 func TestRoutingTableAdd(t *testing.T) {
 	localId := MakeID(1)
 
-	newId1, err := ParseID("2300000000000000000000000000000000000000")
+	newId1, err := ParseID("2100000000000000000000000000000000000000")
 	if err != nil {
 		t.Errorf("Parse ID error!")
 	}
@@ -18,7 +18,7 @@ func TestRoutingTableAdd(t *testing.T) {
 		t.Errorf("Wrong answer when adding node to an empty slot!")
 	}
 
-	newId2, err := ParseID("2100000000000000000000000000000000000000")
+	newId2, err := ParseID("2300000000000000000000000000000000000000")
 	if err != nil {
 		t.Errorf("Parse ID error!")
 	}
@@ -40,7 +40,8 @@ func TestRoutingTableAdd(t *testing.T) {
 	if err != nil {
 		t.Errorf("Parse ID error!")
 	}
-	table.Add(newId4)
+	_, previous := table.Add(newId4)
+	fmt.Printf("%v", *previous)
 	if len(table.Rows[0][2]) != 3 && table.Rows[0][2][0] != newId4 {
 		t.Errorf("Wrong answer when adding node to a full slot!")
 	}

@@ -68,6 +68,8 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	fmt.Printf("Adding to slot %v on row %v\n", remoteNodeId[n], n)
 
 	pos := slotLength
+	var prevVal ID
+	replaced := false
 	for k := slotLength - 1; k >= 0; k-- {
 		// if already exists
 		if slot[k] == remoteNodeId {
@@ -76,7 +78,8 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 		if t.localId.Closer(remoteNodeId, slot[k]) {
 			// replace last one with new node when slot is full
 			if k == SLOTSIZE-1 {
-				previous = &slot[k]
+				prevVal = slot[k]
+				replaced = true
 			} else if k == slotLength-1 { // copy slot[k] to slot[k+1]
 				slot = append(slot, slot[k])
 			} else {
@@ -98,6 +101,9 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 		fmt.Printf("case 2: adding %v to %v\n", remoteNodeId, t.localId)
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
+	if replaced {
+		previous = &prevVal
+	}
 	return added, previous
 }
 
