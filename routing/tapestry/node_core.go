@@ -267,7 +267,8 @@ func (local *TapestryNode) Fetch(
 ) (*pb.FetchedLocations, error) {
 	// TODO(students): [Tapestry] Implement me!
 
-	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: Hash(key.GetKey()).String(), Level: 0})
+	id := Hash(key.GetKey())
+	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: id.String(), Level: 0})
 	if err != nil {
 		return nil, err
 	}
@@ -326,8 +327,6 @@ func (local *TapestryNode) Transfer(
 
 	// TODO(students): [Tapestry] Implement me!
 	local.LocationsByKey.RegisterAll(nodeMap, TIMEOUT)
-	// DEBUG
-	// if from != local.Id {
 	added, previous := local.Table.Add(from)
 	return &pb.Ok{Ok: added || previous != nil}, nil
 }

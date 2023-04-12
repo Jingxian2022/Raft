@@ -68,6 +68,8 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	fmt.Printf("Adding to slot %v on row %v\n", remoteNodeId[n], n)
 
 	pos := slotLength
+	var prevVal ID
+	replaced := false
 	for k := slotLength - 1; k >= 0; k-- {
 		// if already exists
 		if slot[k] == remoteNodeId {
@@ -76,7 +78,8 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 		if t.localId.Closer(remoteNodeId, slot[k]) {
 			// replace last one with new node when slot is full
 			if k == SLOTSIZE-1 {
-				previous = &slot[k]
+				prevVal = slot[k]
+				replaced = true
 			} else if k == slotLength-1 { // copy slot[k] to slot[k+1]
 				slot = append(slot, slot[k])
 			} else {
@@ -98,6 +101,9 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 		fmt.Printf("case 2: adding %v to %v\n", remoteNodeId, t.localId)
 	}
 	t.Rows[n][remoteNodeId[n]] = slot
+	if replaced {
+		previous = &prevVal
+	}
 	return added, previous
 }
 
@@ -110,6 +116,7 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
 	if t.localId == remoteNodeId {
 		return false
 	}
@@ -138,8 +145,11 @@ func (t *RoutingTable) GetLevel(level int) (nodeIds []ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	// FIX
+	if level < 0 || level >= DIGITS {
+		return nil
+	}
 
-	nodeIds = make([]ID, 0)
 	for k := 0; k < BASE; k++ {
 		for i := 0; i < len(t.Rows[level][k]); i++ {
 			if t.Rows[level][k][i] != t.localId {
@@ -174,32 +184,5 @@ func (t *RoutingTable) FindNextHop(id ID, level int32) ID {
 			idx = (idx + 1) % BASE
 		}
 	}
-
-	// for currentLevel := level; currentLevel < DIGITS; currentLevel++ {
-	// 	flag_jumplevel := false
-	// 	// iterate through the slots in the level
-	// 	for currentSlot := id[currentLevel]; currentSlot < BASE; currentSlot++ {
-	// 		// Finds a non-empty cell in the table
-	// 		if len(t.Rows[currentLevel][currentSlot]) != 0 {
-	// 			// iterate through the nodes in the cell
-	// 			for i := 0; i < len(t.Rows[currentLevel][currentSlot]); i++ {
-	// 				// If the first node in the non-empty cell is non-local, return it.
-	// 				if t.Rows[currentLevel][currentSlot][i] != t.localId {
-	// 					return t.Rows[currentLevel][currentSlot][i]
-	// 				}
-	// 				//  If the first node in the non-empty cell is local, we need to keep searching.
-	// 				flag_jumplevel = true
-	// 				break // jump to next level
-	// 			}
-	// 		}
-	// 		if flag_jumplevel {
-	// 			break // jump to next level
-	// 		}
-	// 	}
-	// 	if flag_jumplevel {
-	// 		continue
-	// 	}
-	// 	return t.localId
-	// }
 	return t.localId
 }

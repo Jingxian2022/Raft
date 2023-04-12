@@ -129,20 +129,14 @@ func (local *TapestryNode) Join(remoteNodeId ID) error {
 	nodeMsg := &pb.NodeMsg{
 		Id: local.Id.String(),
 	}
-	tmp := make(chan *pb.Neighbors)
-	e := make(chan error)
-	go func() {
-		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
-		rootNode := pb.NewTapestryRPCClient(conn)
-		res, err := rootNode.AddNode(context.Background(), nodeMsg)
-		e <- err
-		if e != nil {
-			panic(err)
-			// return fmt.Errorf("Error adding ourselves to root node %v, reason: %v", rootId, err)
-		}
-		tmp <- res
-	}()
-	resp := <-tmp
+
+	conn := local.Node.PeerConns[local.RetrieveID(rootId)]
+	rootNode := pb.NewTapestryRPCClient(conn)
+	resp, err := rootNode.AddNode(context.Background(), nodeMsg)
+	if err != nil {
+		return fmt.Errorf("Error adding ourselves to root node %v, reason: %v", rootId, err)
+	}
+
 	// Add the neighbors to our local routing table.
 	neighborIds, err := stringSliceToIds(resp.Neighbors)
 	if err != nil {
@@ -255,9 +249,6 @@ func (local *TapestryNode) AddNodeMulticast(
 	wg := sync.WaitGroup{}
 	if level < DIGITS {
 		for _, target := range targets {
-			if multicastRequest.Level+1 == 40 {
-				break
-			}
 			wg.Add(1)
 			go func(target ID, results *[]string) {
 				defer wg.Done()
