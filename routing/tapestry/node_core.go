@@ -244,19 +244,17 @@ func (local *TapestryNode) Register(
 	key := registration.Key
 
 	// TODO(students): [Tapestry] Implement me!
-	// id: the node that stores some data with key
-	node := Hash(key)
-	rootId, err := local.FindRootOnRemoteNode(from, node)
+	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 	if err != nil {
 		return nil, err
 	}
 
-	if *rootId == local.Id {
+	if rootId.GetNext() == local.Id.String() {
 		// Add the node to the location map
-		local.LocationsByKey.Register(key, node, TIMEOUT)
+		local.LocationsByKey.Register(key, from, TIMEOUT)
 	}
 
-	return &pb.Ok{Ok: *rootId == local.Id}, nil
+	return &pb.Ok{Ok: rootId.GetNext() == local.Id.String()}, nil
 }
 
 // Fetch checks that we are the root node for the requested key and
@@ -276,6 +274,7 @@ func (local *TapestryNode) Fetch(
 	if rootId.GetNext() == local.Id.String() {
 		// return all nodes that are registered in the local location map for this key
 		ids := local.LocationsByKey.Get(key.GetKey())
+		local.log.Printf("Fetching : %v", ids)
 		for _, id := range ids {
 			nodesStoringKey = append(nodesStoringKey, id.String())
 		}
