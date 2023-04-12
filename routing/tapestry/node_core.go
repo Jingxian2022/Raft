@@ -153,31 +153,32 @@ func (local *TapestryNode) Lookup(key string) ([]ID, error) {
 	// TODO(students): [Tapestry] Implement me!
 
 	retry := RETRIES
+	errors := make([]error, 0, RETRIES)
 	for retry > 0 {
 		retry--
 		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 		if err != nil {
+			errors = append(errors, err)
 			continue
 		}
 
 		rootId, err := ParseID(rootMsg.GetNext())
 		if err != nil {
+			errors = append(errors, err)
 			continue
 		}
 		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
 		rootNode := pb.NewTapestryRPCClient(conn)
 		resp, err := rootNode.Fetch(context.Background(), &pb.TapestryKey{Key: key})
 		if err != nil {
+			errors = append(errors, err)
 			continue
-		}
-		if !resp.GetIsRoot() {
-			continue // TODO: check if should return error
 		}
 
 		return stringSliceToIds(resp.GetValues())
 	}
 
-	return nil, errors.New("Lookup failed!")
+	return make([]ID, 0), errors[RETRIES-1]
 }
 
 // FindRoot returns the root for the id in idMsg by recursive RPC calls on the next hop found in our routing table
