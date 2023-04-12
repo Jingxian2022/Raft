@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var port = 10000
+var port = 500
 
 func generateTapestryAddrs(k int) []string {
 	var peers []string

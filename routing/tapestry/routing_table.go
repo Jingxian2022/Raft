@@ -58,6 +58,9 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
+	if t.localId == remoteNodeId {
+		return false, nil
+	}
 	n := SharedPrefixLength(t.localId, remoteNodeId)
 	slot := t.Rows[n][remoteNodeId[n]]
 	slotLength := len(slot)

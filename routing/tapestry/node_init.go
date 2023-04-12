@@ -163,13 +163,15 @@ func (local *TapestryNode) traverseBackpointers(neighbors []ID, level int) error
 		}
 		nextNeighbors := idsToStringSlice(neighbors)
 		for _, neighbor := range neighbors {
-			conn := local.Node.PeerConns[local.RetrieveID(neighbor)]
-			neighborNode := pb.NewTapestryRPCClient(conn)
-			backPointers, err := neighborNode.GetBackpointers(context.Background(), &pb.BackpointerRequest{From: local.Id.String(), Level: int32(k)})
-			if err != nil {
-				return errors.New("Failed to getBackpointers!")
-			}
-			nextNeighbors = append(nextNeighbors, backPointers.Neighbors...)
+			go func(neighbor ID, nextNeighbors *[]string) {
+				conn := local.Node.PeerConns[local.RetrieveID(neighbor)]
+				neighborNode := pb.NewTapestryRPCClient(conn)
+				backPointers, err := neighborNode.GetBackpointers(context.Background(), &pb.BackpointerRequest{From: local.Id.String(), Level: int32(k)})
+				if err != nil {
+					return
+				}
+				*nextNeighbors = append(*nextNeighbors, backPointers.Neighbors...)
+			}(neighbor, &nextNeighbors)
 		}
 		nextNeighbors = Merge(nextNeighbors)
 		for _, neighbor := range nextNeighbors {
@@ -254,16 +256,16 @@ func (local *TapestryNode) AddNodeMulticast(
 
 				conn := local.Node.PeerConns[local.RetrieveID(target)]
 				targetNode := pb.NewTapestryRPCClient(conn)
-				targetNeighbors, _ := targetNode.AddNodeMulticast(ctx, &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
+				targetNeighbors, _ := targetNode.AddNodeMulticast(context.Background(), &pb.MulticastRequest{NewNode: multicastRequest.GetNewNode(), Level: multicastRequest.Level + 1})
 				mtx.Lock()
 				*results = append(*results, targetNeighbors.Neighbors...)
 				mtx.Unlock()
 			}(target, &results)
 
 		}
-		local.log.Printf("wait1")
+		//local.log.Printf("wait1")
 		wg.Wait()
-		local.log.Printf("wait2")
+		//local.log.Printf("wait2")
 
 		results = Merge(results)
 		for _, res := range results {
@@ -272,24 +274,26 @@ func (local *TapestryNode) AddNodeMulticast(
 			}
 		}
 
-		local.Output()
+		//local.Output()
 		err = local.AddRoute(newNodeId)
 		if err != nil {
 			return nil, err
 		}
+		go func() {
+			objects := local.LocationsByKey.GetTransferRegistrations(local.Id, newNodeId)
+			conn := local.Node.PeerConns[local.RetrieveID(newNodeId)]
+			newNode := pb.NewTapestryRPCClient(conn)
 
-		objects := local.LocationsByKey.GetTransferRegistrations(local.Id, newNodeId)
-		conn := local.Node.PeerConns[local.RetrieveID(newNodeId)]
-		newNode := pb.NewTapestryRPCClient(conn)
+			transferData := pb.TransferData{From: local.Id.String()}
+			for key, set := range objects {
+				transferData.Data[key] = &pb.Neighbors{Neighbors: idsToStringSlice(set)}
+			}
+			_, err = newNode.Transfer(ctx, &transferData)
+			if err != nil {
+				local.LocationsByKey.RegisterAll(objects, TIMEOUT)
+			}
+		}()
 
-		transferData := pb.TransferData{From: local.Id.String()}
-		for key, set := range objects {
-			transferData.Data[key] = &pb.Neighbors{Neighbors: idsToStringSlice(set)}
-		}
-		_, err = newNode.Transfer(ctx, &transferData)
-		if err != nil {
-			local.LocationsByKey.RegisterAll(objects, TIMEOUT)
-		}
 	}
 
 	neighbors := pb.Neighbors{Neighbors: results}
@@ -413,7 +417,7 @@ func (local *TapestryNode) RemoveBadNodes(
 func (local *TapestryNode) AddRoute(remoteNodeId ID) error {
 	// TODO(students): [Tapestry] Implement me!
 	added, previous := local.Table.Add(remoteNodeId)
-	local.Output()
+	//local.Output()
 	if added {
 		go func() {
 			conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
