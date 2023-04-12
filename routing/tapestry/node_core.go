@@ -84,32 +84,69 @@ func (local *TapestryNode) Remove(key string) bool {
 func (local *TapestryNode) Publish(key string) (chan bool, error) {
 	// TODO(students): [Tapestry] Implement me!
 
-	stopSignal := make(chan bool)
+	// stopSignal := make(chan bool)
 
-	err := local.attemptToPublish(key)
-	if err != nil {
-		return nil, err
-	}
+	// err := local.attemptToPublish(key)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	go func() {
-		// if the interval is up, then call publish again
-		ticker := time.NewTicker(REPUBLISH)
+	// go func() {
+	// 	// if the interval is up, then call publish again
+	// 	ticker := time.NewTicker(REPUBLISH)
 
-		defer ticker.Stop()
+	// 	defer ticker.Stop()
 
-		for {
-			select {
-			// Keep trying to republish regardless of how the last attempt went
-			case <-ticker.C:
-				_ = local.attemptToPublish(key)
-			// If receiving from the channel, stop republishing
-			case <-stopSignal:
-				return
-			}
+	// 	for {
+	// 		select {
+	// 		// Keep trying to republish regardless of how the last attempt went
+	// 		case <-ticker.C:
+	// 			_ = local.attemptToPublish(key)
+	// 		// If receiving from the channel, stop republishing
+	// 		case <-stopSignal:
+	// 			return
+	// 		}
+	// 	}
+	// }()
+
+	// return stopSignal, nil
+	INTERVAL := 5
+	retry := RETRIES
+	stopsignal := make(chan bool)
+
+	for retry > 0 {
+		retry--
+		rootmsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
+		if err != nil {
+			continue
 		}
-	}()
+		conn := local.Node.PeerConns[local.RetrieveID(MakeIDFromHexString(rootmsg.GetNext()))] // TODO: check
+		rootNode := pb.NewTapestryRPCClient(conn)
+		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.String(), Key: key})
+		if err != nil || !ok.Ok {
+			continue
+		}
+		go func() {
+			// set up a interval=5, if the interval is up, then call publish again
+			ticker := time.NewTicker(time.Duration(INTERVAL) * time.Second)
 
-	return stopSignal, nil
+			for {
+				select {
+				case <-ticker.C:
+					stop, _ := local.Publish(key)
+					select {
+					case <-stop:
+						fmt.Println("Stopped publishing key")
+						return
+					}
+				}
+			}
+		}()
+		stopsignal <- false
+		return stopsignal, nil
+	}
+	stopsignal <- false
+	return stopsignal, errors.New("Failed to publish key at the first attempt")
 }
 
 func (local *TapestryNode) attemptToPublish(key string) error {
@@ -267,8 +304,7 @@ func (local *TapestryNode) Fetch(
 ) (*pb.FetchedLocations, error) {
 	// TODO(students): [Tapestry] Implement me!
 
-	id := Hash(key.GetKey())
-	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: id.String(), Level: 0})
+	rootId, err := local.FindRoot(ctx, &pb.IdMsg{Id: Hash(key.GetKey()).String(), Level: 0})
 	if err != nil {
 		return nil, err
 	}

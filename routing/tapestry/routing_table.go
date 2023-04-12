@@ -188,7 +188,6 @@ func (t *RoutingTable) FindNextHop(id ID, level int32) ID {
 	// 					return t.Rows[currentLevel][currentSlot][i]
 	// 				}
 	// 				//  If the first node in the non-empty cell is local, we need to keep searching.
-	// 				// Jump down to the first slot of the next level
 	// 				flag_jumplevel = true
 	// 				break // jump to next level
 	// 			}
