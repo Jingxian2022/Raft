@@ -8,6 +8,7 @@
 package tapestry
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -64,7 +65,7 @@ func (t *RoutingTable) Add(remoteNodeId ID) (added bool, previous *ID) {
 	slot := t.Rows[n][remoteNodeId[n]]
 	slotLength := len(slot)
 
-	//fmt.Printf("Adding to slot %v on row %v\n", remoteNodeId[n], n)
+	fmt.Printf("Adding to slot %v on row %v\n", remoteNodeId[n], n)
 
 	pos := slotLength
 	var prevVal ID
@@ -115,7 +116,7 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 	defer t.mutex.Unlock()
 
 	// TODO(students): [Tapestry] Implement me!
-	//fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
+	fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
 	if t.localId == remoteNodeId {
 		return false
 	}
@@ -129,7 +130,7 @@ func (t *RoutingTable) Remove(remoteNodeId ID) (wasRemoved bool) {
 		}
 	}
 	if pos != -1 {
-		//fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
+		fmt.Printf("Removing %v from %v", remoteNodeId, t.localId)
 		slot = append(slot[:pos], slot[pos+1:]...)
 		wasRemoved = true
 	}

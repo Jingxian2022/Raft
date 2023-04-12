@@ -272,14 +272,10 @@ func (local *TapestryNode) Fetch(
 	if err != nil {
 		return nil, err
 	}
-
+	nodesStoringKey := make([]string, 0)
 	if rootId.GetNext() == local.Id.String() {
 		// return all nodes that are registered in the local location map for this key
 		ids := local.LocationsByKey.Get(key.GetKey())
-		if ids == nil {
-			return nil, nil
-		}
-		nodesStoringKey := make([]string, 0)
 		for _, id := range ids {
 			nodesStoringKey = append(nodesStoringKey, id.String())
 		}
