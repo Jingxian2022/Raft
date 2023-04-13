@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	pb "modist/proto"
+	"sync"
 )
 
 // Kill this node without gracefully leaving the tapestry.
@@ -26,32 +27,34 @@ func (local *TapestryNode) Kill() {
 func (local *TapestryNode) Leave() error {
 	// TODO(students): [Tapestry] Implement me!
 	// find the nodes in our backpointers
-	for level := 0; level < 40; level++ {
-		for _, node := range local.Backpointers.Get(level) {
-			// Notify the nodes in our backpointers that we are leaving by calling NotifyLeave
-			// for each find a replacement, call NotifyLeave on each backpointer with the replacement
-			replacement := ""
-			cnt := 0
-			for replacement == "" {
-				cnt++
-				for _, node := range local.Table.GetLevel(level + cnt) {
-					if (node != ID{}) {
-						replacement = node.String()
-						break
-					}
+	var replacement *ID
+	for i := DIGITS - 1; i >= 0; i-- {
+		if i != DIGITS-1 {
+			nodes := local.Table.GetLevel(i)
+			if len(nodes) > 0 {
+				replacement = &(nodes[0])
+			}
+		}
+
+		backPointers := local.Backpointers.Get(i)
+		var wg sync.WaitGroup
+		for _, bp := range backPointers {
+			wg.Add(1)
+			go func(remoteNodeId ID, replacement ID) {
+				defer wg.Done()
+
+				conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
+				remoteNode := pb.NewTapestryRPCClient(conn)
+
+				if okMsg, err := remoteNode.NotifyLeave(context.Background(), &pb.LeaveNotification{
+					From:        local.Id.String(),
+					Replacement: replacement.String(),
+				}); err != nil || !okMsg.Ok {
+					_, _ = local.RemoveBadNodes(context.Background(), &pb.Neighbors{
+						Neighbors: idsToStringSlice([]ID{remoteNodeId}),
+					})
 				}
-				// can't find a replacement
-				break
-			}
-			conn := local.Node.PeerConns[node.Big().Uint64()]
-			toNotify := pb.NewTapestryRPCClient(conn)
-			_, err := toNotify.NotifyLeave(context.Background(), &pb.LeaveNotification{
-				From:        local.Id.String(),
-				Replacement: replacement,
-			})
-			if err != nil {
-				return err
-			}
+			}(bp, *replacement)
 		}
 	}
 
