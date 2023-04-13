@@ -9,7 +9,6 @@ package tapestry
 
 import (
 	"context"
-	"errors"
 	pb "modist/proto"
 	"sync"
 )
@@ -27,40 +26,42 @@ func (local *TapestryNode) Kill() {
 func (local *TapestryNode) Leave() error {
 	// TODO(students): [Tapestry] Implement me!
 	// find the nodes in our backpointers
-	var replacement *ID
+	replacement := ""
 	for i := DIGITS - 1; i >= 0; i-- {
+		replacement = ""
 		if i != DIGITS-1 {
 			nodes := local.Table.GetLevel(i)
 			if len(nodes) > 0 {
-				replacement = &(nodes[0])
+				replacement = nodes[0].String()
 			}
 		}
 
 		backPointers := local.Backpointers.Get(i)
 		var wg sync.WaitGroup
-		for _, bp := range backPointers {
+		for _, backPointer := range backPointers {
 			wg.Add(1)
-			go func(remoteNodeId ID, replacement ID) {
+			go func(remoteNodeId ID, replacement string) {
 				defer wg.Done()
-
 				conn := local.Node.PeerConns[local.RetrieveID(remoteNodeId)]
-				remoteNode := pb.NewTapestryRPCClient(conn)
-
-				if okMsg, err := remoteNode.NotifyLeave(context.Background(), &pb.LeaveNotification{
+				toNotify := pb.NewTapestryRPCClient(conn)
+				_, err := toNotify.NotifyLeave(context.Background(), &pb.LeaveNotification{
 					From:        local.Id.String(),
-					Replacement: replacement.String(),
-				}); err != nil || !okMsg.Ok {
-					_, _ = local.RemoveBadNodes(context.Background(), &pb.Neighbors{
+					Replacement: replacement,
+				})
+
+				if err != nil {
+					local.RemoveBadNodes(context.Background(), &pb.Neighbors{
 						Neighbors: idsToStringSlice([]ID{remoteNodeId}),
 					})
 				}
-			}(bp, *replacement)
+			}(backPointer, replacement)
 		}
+		wg.Wait()
 	}
 
 	local.blobstore.DeleteAll()
 	go local.Node.GrpcServer.GracefulStop()
-	return errors.New("Leave has not been implemented yet!")
+	return nil
 }
 
 // NotifyLeave occurs when another node is informing us of a graceful exit.
@@ -89,13 +90,15 @@ func (local *TapestryNode) NotifyLeave(
 	local.Backpointers.Remove(from)
 
 	// If replacement is not an empty string, add replacement to our routing table
-	replacementID, err := ParseID(replacement)
-	if err != nil {
-		return nil, err
-	}
-	err = local.AddRoute(replacementID)
-	if err != nil {
-		return nil, err
+	if replacement != "" {
+		replacementID, err := ParseID(replacement)
+		if err != nil {
+			return nil, err
+		}
+		err = local.AddRoute(replacementID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// TODO(students): [Tapestry] Implement me!
