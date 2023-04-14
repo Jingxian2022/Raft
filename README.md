@@ -18,4 +18,4 @@ Testing basic function of Publish by checking the root node's LocationMap
 Testing basic function of Lookup and Fetch
 
 ### TestLeave
-Testing basic function 
+Testing basic function of Leave and NotifyLeave
