@@ -160,6 +160,9 @@ func (local *TapestryNode) traverseBackpointers(neighbors []ID, level int) error
 		sort.SliceStable(neighbors, func(i, j int) bool {
 			return local.Id.Closer(neighbors[i], neighbors[j])
 		})
+		if len(neighbors) > 0 && neighbors[0] == local.Id {
+			neighbors = neighbors[1:]
+		}
 		if len(neighbors) > K {
 			neighbors = neighbors[:K]
 		}
@@ -175,6 +178,7 @@ func (local *TapestryNode) traverseBackpointers(neighbors []ID, level int) error
 				local.log.Printf("GetBackpointers level %v", k)
 				backPointers, err := neighborNode.GetBackpointers(context.Background(), &pb.BackpointerRequest{From: local.Id.String(), Level: int32(k)})
 				if err != nil {
+					local.RemoveBackpointer(context.Background(), &pb.NodeMsg{Id: neighbor.String()})
 					return
 				}
 				mtx.Lock()
@@ -452,7 +456,7 @@ func (local *TapestryNode) AddRoute(remoteNodeId ID) error {
 		go func() {
 			conn := local.Node.PeerConns[local.RetrieveID(*previous)]
 			previousNode := pb.NewTapestryRPCClient(conn)
-			_, err := previousNode.RemoveBackpointer(context.Background(), &pb.NodeMsg{Id: local.String()})
+			_, err := previousNode.RemoveBackpointer(context.Background(), &pb.NodeMsg{Id: local.Id.String()})
 			if err != nil {
 				//panic(err)
 				return // fmt.Errorf("Error removing backpointer.")

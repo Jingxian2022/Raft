@@ -113,35 +113,31 @@ func (local *TapestryNode) Publish(key string) (chan bool, error) {
 }
 
 func (local *TapestryNode) attemptToPublish(key string) error {
-	errs := make([]error, 0, RETRIES)
 	for k := 0; k < RETRIES; k++ {
 		// Find the root node for the key
 		rootMsg, err := local.FindRoot(context.Background(), &pb.IdMsg{Id: Hash(key).String(), Level: 0})
 		if err != nil {
-			errs = append(errs, err)
 			continue
 		}
 
 		// Register the local node on the root
 		rootId, err := ParseID(rootMsg.GetNext())
 		if err != nil {
-			errs = append(errs, err)
 			continue
 		}
 		conn := local.Node.PeerConns[local.RetrieveID(rootId)]
 		rootNode := pb.NewTapestryRPCClient(conn)
-		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.String(), Key: key})
+		ok, err := rootNode.Register(context.Background(), &pb.Registration{FromNode: local.Id.String(), Key: key})
 		if err != nil || !ok.Ok {
 			if err == nil {
 				err = fmt.Errorf("The root node does not believe itself is the root.\n")
 			}
-			errs = append(errs, err)
 			continue
 		}
 		// Succeed
 		return nil
 	}
-	return errs[RETRIES-1]
+	return fmt.Errorf("Failed to publish %v", key)
 }
 
 // Lookup look up the Tapestry nodes that are storing the blob for the specified key.
@@ -207,25 +203,24 @@ func (local *TapestryNode) FindRoot(ctx context.Context, idMsg *pb.IdMsg) (*pb.R
 		// Call FindRoot on nextHop
 		conn := local.Node.PeerConns[local.RetrieveID(nextHop)]
 		nextNode := pb.NewTapestryRPCClient(conn)
-		msg, err := nextNode.FindRoot(ctx, &pb.IdMsg{
-			Id:    idMsg.Id,
+		msg, err := nextNode.FindRoot(context.Background(), &pb.IdMsg{
+			Id:    id.String(),
 			Level: level + 1,
 		})
 
 		if err != nil {
 			// Add nextHop to toRemove
-			local.log.Printf("Error finding root")
-			local.Table.Remove(nextHop)
+			local.log.Printf("Error finding root for %v", id)
 			allToRemove = append(allToRemove, nextHop.String())
+			local.Table.Remove(nextHop)
 			continue
 		}
 
 		// remove them from local routing table.
 		allToRemove = append(allToRemove, msg.ToRemove...)
-		local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
-		msg.ToRemove = allToRemove
+		//local.RemoveBadNodes(ctx, &pb.Neighbors{Neighbors: allToRemove})
 		local.log.Printf("Root found %v", msg.Next)
-		return msg, nil
+		return &pb.RootMsg{Next: msg.Next, ToRemove: allToRemove}, nil
 	}
 }
 
@@ -271,15 +266,11 @@ func (local *TapestryNode) Fetch(
 	if err != nil {
 		return nil, err
 	}
-	nodesStoringKey := make([]string, 0)
 	if rootId.GetNext() == local.Id.String() {
 		// return all nodes that are registered in the local location map for this key
 		ids := local.LocationsByKey.Get(key.GetKey())
 		local.log.Printf("Fetching : %v", ids)
-		for _, id := range ids {
-			nodesStoringKey = append(nodesStoringKey, id.String())
-		}
-		return &pb.FetchedLocations{IsRoot: true, Values: nodesStoringKey}, nil
+		return &pb.FetchedLocations{IsRoot: true, Values: idsToStringSlice(ids)}, nil
 	}
 	return &pb.FetchedLocations{IsRoot: false}, nil
 }
@@ -323,8 +314,12 @@ func (local *TapestryNode) Transfer(
 
 	// TODO(students): [Tapestry] Implement me!
 	local.LocationsByKey.RegisterAll(nodeMap, TIMEOUT)
-	added, previous := local.Table.Add(from)
-	return &pb.Ok{Ok: added || previous != nil}, nil
+	//added, previous := local.Table.Add(from)
+	err = local.AddRoute(from)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Ok{Ok: true}, nil
 }
 
 // calls FindRoot on a remote node to find the root of the given id
