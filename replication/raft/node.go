@@ -39,6 +39,13 @@ type commit []byte
 // None is a placeholder Node ID used when there is no leader
 const None uint64 = 0
 
+type CommitMsg struct {
+	success     bool
+	err         error
+	lastApplied uint64
+	commitIndex uint64
+}
+
 type RaftNode struct {
 	// Node that this raft node is part of
 	node *node.Node
@@ -173,9 +180,6 @@ func (rn *RaftNode) Stop() {
 
 	close(rn.commitC)
 
-	if state := rn.state; !(state == ExitState) {
-		rn.stopC <- struct{}{}
-	}
 	rn.state = ExitState
 	rn.stableStore.Close()
 }

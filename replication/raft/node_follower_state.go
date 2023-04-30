@@ -1,5 +1,122 @@
 package raft
 
+import (
+	"context"
+	"encoding/json"
+	pb "modist/proto"
+	"time"
+)
+
+func (rn *RaftNode) followerListen(nextState chan stateFunction) {
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	timeout := time.After(rn.heartbeatTimeout)
+
+	for {
+		select {
+		case <-timeout:
+			rn.log.Printf("follower %d timed out", rn.node.ID)
+			nextState <- rn.doCandidate
+		case <-rn.stopC:
+			rn.log.Printf("stop message received")
+			return
+		case proposeData := <-rn.proposeC:
+			rn.log.Printf("follower %d received proposeC", rn.node.ID)
+			// we forward the propose message to the leader
+			go rn.handleFollowerProposal(proposeData)
+
+		case voteRequest := <-rn.requestVoteC:
+			rn.log.Printf("follower %d received requestVoteC", rn.node.ID)
+			if rn.GetVotedFor() == 0 && voteRequest.request.Term >= rn.GetCurrentTerm() {
+				rn.setVotedFor(voteRequest.request.From)
+				rn.SetCurrentTerm(voteRequest.request.Term)
+				// send vote to candidate
+				rn.log.Printf("follower %d voted for %d", rn.node.ID, rn.node.ID)
+				voteRequest.reply <- pb.RequestVoteReply{
+					From:        rn.node.ID,
+					To:          voteRequest.request.From,
+					Term:        rn.GetCurrentTerm(),
+					VoteGranted: true,
+				}
+			} else {
+				// decline the request
+				voteRequest.reply <- pb.RequestVoteReply{
+					From:        rn.node.ID,
+					To:          voteRequest.request.From,
+					Term:        rn.GetCurrentTerm(),
+					VoteGranted: false,
+				}
+			}
+
+		case entrymsg := <-rn.appendEntriesC:
+			timeout = time.After(rn.heartbeatTimeout)
+			if entrymsg.request.Term < rn.GetCurrentTerm() {
+				// decline the request
+				entrymsg.reply <- pb.AppendEntriesReply{
+					From:    rn.node.ID,
+					To:      rn.node.ID,
+					Term:    rn.GetCurrentTerm(),
+					Success: false,
+				}
+			} else {
+				// accept the request
+				// TODO: process the request
+				rn.SetCurrentTerm(entrymsg.request.Term)
+				rn.log.Printf("follower %d received appendEntriesC", rn.node.ID)
+				entrymsg.reply <- pb.AppendEntriesReply{
+					From:    rn.node.ID,
+					To:      rn.node.ID,
+					Term:    rn.GetCurrentTerm(),
+					Success: true,
+				}
+				rn.StoreLog(&pb.LogEntry{
+					Term:  entrymsg.request.Term,
+					Index: entrymsg.request.PrevLogIndex + 1,
+				})
+			}
+		}
+	}
+}
+
+func (rn *RaftNode) handleFollowerProposal(proposeData []byte) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn := rn.node.PeerConns[rn.leader]
+	leader := pb.NewRaftRPCClient(conn)
+	// reply := make(chan *pb.ProposalReply)
+	_, err := leader.Propose(ctx, &pb.ProposalRequest{ // TODO: reply seems contains nothing...
+		From: rn.node.ID,
+		To:   rn.leader,
+		Data: proposeData})
+	// reply <- tmpreply
+	if err != nil {
+		rn.log.Printf("error sending propose to %d: %v", rn.leader, err)
+		tmp, err := json.Marshal(CommitMsg{
+			success: false,
+			err:     err,
+		})
+		if err != nil {
+			rn.log.Printf("error marshalling commit message: %v", err)
+		}
+		commitMsg := commit(tmp)
+		rn.commitC <- &commitMsg
+	} else {
+		rn.log.Printf("follower %d received proposalReply", rn.node.ID)
+		tmp, err := json.Marshal(CommitMsg{
+			success:     true,
+			err:         nil,
+			lastApplied: rn.lastApplied,
+			commitIndex: rn.commitIndex, // TODO: check
+		})
+		if err != nil {
+			rn.log.Printf("error marshalling commit message: %v", err)
+		}
+		commitMsg := commit(tmp)
+		rn.commitC <- &commitMsg
+	}
+}
+
 // doFollower implements the logic for a Raft node in the follower state.
 func (rn *RaftNode) doFollower() stateFunction {
 	rn.state = FollowerState
@@ -9,5 +126,18 @@ func (rn *RaftNode) doFollower() stateFunction {
 	// Hint: perform any initial work, and then consider what a node in the
 	// follower state should do when it receives an incoming message on every
 	// possible channel.
-	return nil
+	rn.setVotedFor(0)
+
+	nextState := make(chan stateFunction, 1)
+	go rn.followerListen(nextState)
+
+	for {
+		select {
+
+		case <-rn.stopC:
+			return nil
+		case <-nextState:
+			return <-nextState
+		}
+	}
 }

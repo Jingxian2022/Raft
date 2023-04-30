@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"modist/orchestrator/node"
 	pb "modist/proto"
@@ -23,6 +24,10 @@ type State struct {
 	// Channels given back by the underlying Raft implementation
 	proposeC chan<- []byte
 	commitC  <-chan *commit
+	// TODO: what are the differences???????????
+
+	proposedKV       pb.PutRequest
+	replicateSuccess chan bool
 
 	// Observability
 	log *log.Logger
@@ -62,6 +67,9 @@ func Configure(args any) *State {
 		log: node.Log,
 
 		// TODO(students): [Raft] Initialize any additional fields and add to State struct
+		proposedKV: pb.PutRequest{},
+		//????? do i need mutex? FIXME:
+		replicateSuccess: make(chan bool),
 	}
 
 	// We registered RaftRPCServer when calling NewRaftNode above so we only need to
@@ -72,8 +80,33 @@ func Configure(args any) *State {
 	go grpcServer.Serve(node.Listener)
 
 	// TODO(students): [Raft] Call helper functions if needed
+	go s.commitCListener()
 
 	return s
+}
+
+func (s *State) commitCListener() {
+	for {
+		select {
+		case commit := <-s.commitC:
+			if commit == nil {
+				return
+			}
+			c := pb.PutRequest{} // TODO: what should be the type of commit?
+			err := json.Unmarshal(*commit, &c)
+			if err != nil {
+				s.log.Printf("error unmarshalling commit: %v", err)
+				continue
+			}
+			if c.Key == s.proposedKV.Key && c.Value == s.proposedKV.Value {
+				s.replicateSuccess <- true
+			}
+			s.mu.Lock()
+			// FIXME: store [lastApplied + 1, commitIndex]
+			s.store[c.Key] = c.Value
+			s.mu.Unlock()
+		}
+	}
 }
 
 // ReplicateKey replicates the (key, value) given in the PutRequest by relaying it to the
@@ -89,7 +122,23 @@ func Configure(args any) *State {
 func (s *State) ReplicateKey(ctx context.Context, r *pb.PutRequest) (*pb.PutReply, error) {
 
 	// TODO(students): [Raft] Implement me!
-	return nil, nil
+	kvR, err := json.Marshal(r)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < RETRIES; i++ {
+		s.proposeC <- kvR
+		s.proposedKV = *r
+		select {
+		case <-s.replicateSuccess:
+			// unmarshal
+			return &pb.PutReply{}, nil
+		case <-time.After(RETRY_TIME):
+			continue
+		}
+	}
+
+	return nil, err
 }
 
 // GetReplicatedKey reads the given key from s.store. The implementation of
@@ -97,5 +146,10 @@ func (s *State) ReplicateKey(ctx context.Context, r *pb.PutRequest) (*pb.PutRepl
 func (s *State) GetReplicatedKey(ctx context.Context, r *pb.GetRequest) (*pb.GetReply, error) {
 
 	// TODO(students): [Raft] Implement me!
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if val, ok := s.store[r.Key]; ok {
+		return &pb.GetReply{Value: val}, nil
+	}
 	return nil, nil
 }

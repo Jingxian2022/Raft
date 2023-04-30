@@ -3,8 +3,6 @@ package raft
 import (
 	"context"
 	"fmt"
-	"io"
-	"log"
 	"math/rand"
 	"modist/orchestrator/node"
 	pb "modist/proto"
@@ -156,6 +154,7 @@ func TestLeaderHeartbeat(t *testing.T) {
 	fakeDoFollower := func(ctx context.Context, rn *RaftNode) {
 		select {
 		case msg := <-rn.appendEntriesC:
+			rn.log.Print("Received appendEntriesRequest!!!!!!!!!!!!!!!!!!!!!!!")
 			appendMu.Lock()
 			msgs = append(msgs, *msg.request)
 			appendMu.Unlock()
@@ -176,7 +175,7 @@ func TestLeaderHeartbeat(t *testing.T) {
 	go leader.Run(ctx, leader.doLeader)
 
 	// Sleep to allow time to reply to appendEntriesRequest
-	time.Sleep(2 * smallPause)
+	time.Sleep(15 * smallPause)
 
 	nodeIDs := []uint64{cluster[1].raftNode.node.ID, cluster[2].raftNode.node.ID}
 
@@ -308,7 +307,12 @@ func TestBasicStoreKV(t *testing.T) {
 
 	var replicators []*State
 	for _, node := range nodes {
-		node.Log = log.New(io.Discard, "", 0)
+		config := &Config{
+			ElectionTimeout:  config.ElectionTimeout,
+			HeartbeatTimeout: config.HeartbeatTimeout,
+			Storage:          NewMemoryStore(),
+		}
+
 		replicator := Configure(Args{
 			Node:   node,
 			Config: config,
