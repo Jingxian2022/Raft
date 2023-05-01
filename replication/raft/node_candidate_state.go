@@ -22,10 +22,13 @@ func (rn *RaftNode) candidateListen(nextStateC chan stateFunction) {
 		case <-rn.stopC:
 			rn.log.Printf("stop message received")
 			return
-		case <-rn.proposeC:
+		case proposeMsg := <-rn.proposeC:
+			var msg pb.PutRequest
+			json.Unmarshal(proposeMsg, &msg)
 			candidateCommit := &CommitMsg{
-				key:   "",
-				value: "",
+				key:     msg.GetKey(),
+				value:   msg.GetValue(),
+				success: false,
 			}
 			tmp, err := json.Marshal(candidateCommit)
 			if err != nil {
@@ -122,7 +125,7 @@ func (rn *RaftNode) doCandidate() stateFunction {
 	// candidate state should do when it receives an incoming message on every
 	// possible channel.
 
-	nextStateC := make(chan stateFunction, 1)
+	nextStateC := make(chan stateFunction)
 	go rn.candidateRequestVote(nextStateC)
 	go rn.candidateListen(nextStateC)
 

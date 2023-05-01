@@ -132,12 +132,11 @@ func (s *State) ReplicateKey(ctx context.Context, r *pb.PutRequest) (*pb.PutRepl
 	if err != nil {
 		return nil, err
 	}
+	s.proposedKVs[KV{Key: r.Key, Value: r.Value}] = struct{}{}
 	for i := 0; i < RETRIES; i++ {
 		s.proposeC <- kvR
-		s.proposedKVs[KV{Key: r.Key, Value: r.Value}] = struct{}{}
 		select {
 		case <-s.replicateSuccess:
-			// unmarshal
 			return &pb.PutReply{}, nil
 		case <-time.After(RETRY_TIME):
 			continue

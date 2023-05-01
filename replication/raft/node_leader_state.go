@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	pb "modist/proto"
 	"sync"
+	"time"
 )
 
 func (rn *RaftNode) sendHeartbeat(nextState chan stateFunction) {
@@ -45,43 +46,43 @@ func (rn *RaftNode) sendHeartbeat(nextState chan stateFunction) {
 	wg0.Wait()
 
 	// send heartbeats to all servers periodically
-	// heartbeatTicker := time.NewTicker(rn.heartbeatTimeout)
-	// defer heartbeatTicker.Stop()
+	heartbeatTicker := time.NewTicker(rn.heartbeatTimeout)
+	defer heartbeatTicker.Stop()
 
-	// var wg sync.WaitGroup
-	// for {
-	// 	if rn.state != LeaderState {
-	// 		return
-	// 	}
-	// 	<-heartbeatTicker.C
-	// 	for followerNodeID := range followerNodes {
-	// 		wg.Add(1)
-	// 		go func(id uint64) {
-	// 			// if id == rn.node.ID {
-	// 			// 	wg.Done()
-	// 			// 	return
-	// 			// }
-	// 			defer wg.Done()
-	// 			rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
-	// 			conn := rn.node.PeerConns[uint64(id)]
-	// 			follower := pb.NewRaftRPCClient(conn)
-	// 			reply, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{ //FIXME:
-	// 				From:         rn.node.ID,
-	// 				To:           uint64(id),
-	// 				Term:         rn.GetCurrentTerm(),
-	// 				LeaderCommit: rn.commitIndex,
-	// 			})
-	// 			if err != nil {
-	// 				rn.log.Printf("error sending heartbeat to %d: %v", id, err)
-	// 			}
-	// 			if !reply.GetSuccess() {
-	// 				rn.log.Printf("follower %d is out of date", id)
-	// 				nextState <- rn.doFollower
-	// 			}
-	// 		}(followerNodeID)
-	// 	}
-	// 	wg.Wait()
-	// }
+	var wg sync.WaitGroup
+	for {
+		if rn.state != LeaderState {
+			return
+		}
+		<-heartbeatTicker.C
+		for followerNodeID := range followerNodes {
+			wg.Add(1)
+			go func(id uint64) {
+				// if id == rn.node.ID {
+				// 	wg.Done()
+				// 	return
+				// }
+				defer wg.Done()
+				rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
+				conn := rn.node.PeerConns[uint64(id)]
+				follower := pb.NewRaftRPCClient(conn)
+				reply, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{ //FIXME:
+					From:         rn.node.ID,
+					To:           uint64(id),
+					Term:         rn.GetCurrentTerm(),
+					LeaderCommit: rn.commitIndex,
+				})
+				if err != nil {
+					rn.log.Printf("error sending heartbeat to %d: %v", id, err)
+				}
+				if !reply.GetSuccess() {
+					rn.log.Printf("follower %d is out of date", id)
+					nextState <- rn.doFollower
+				}
+			}(followerNodeID)
+		}
+		wg.Wait()
+	}
 }
 
 func (rn *RaftNode) leaderListen(nextStateC chan stateFunction) {
@@ -90,8 +91,6 @@ func (rn *RaftNode) leaderListen(nextStateC chan stateFunction) {
 
 	for {
 		select {
-		case <-nextStateC:
-			return
 		case <-rn.appendEntriesC: //???
 			rn.log.Printf("leader %d received appendEntriesC", rn.node.ID)
 		case <-rn.stopC:
@@ -197,7 +196,7 @@ func (rn *RaftNode) doLeader() stateFunction {
 
 	// ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
-	nextStateC := make(chan stateFunction, 1)
+	nextStateC := make(chan stateFunction)
 
 	go rn.sendHeartbeat(nextStateC) //TODO: return when leader is not leader anymore!!!
 	go rn.leaderListen(nextStateC)

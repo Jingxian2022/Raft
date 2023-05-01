@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (rn *RaftNode) followerListen(nextState chan stateFunction) {
+func (rn *RaftNode) followerListen(nextStateC chan stateFunction) {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -20,7 +20,7 @@ func (rn *RaftNode) followerListen(nextState chan stateFunction) {
 		select {
 		case <-timeout:
 			rn.log.Printf("follower %d timed out", rn.node.ID)
-			nextState <- rn.doCandidate
+			nextStateC <- rn.doCandidate
 		case <-rn.stopC:
 			rn.log.Printf("stop message received")
 			return
@@ -139,16 +139,16 @@ func (rn *RaftNode) doFollower() stateFunction {
 	// possible channel.
 	rn.setVotedFor(0)
 
-	nextState := make(chan stateFunction, 1)
-	go rn.followerListen(nextState)
+	nextStateC := make(chan stateFunction)
+	go rn.followerListen(nextStateC)
 
 	for {
 		select {
 
 		case <-rn.stopC:
 			return nil
-		case <-nextState:
-			return <-nextState
+		case <-nextStateC:
+			return <-nextStateC
 		}
 	}
 }
