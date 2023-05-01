@@ -26,7 +26,7 @@ type State struct {
 	commitC  <-chan *commit
 	// TODO: what are the differences???????????
 
-	proposedKV       pb.PutRequest
+	proposedKVs      map[KV]struct{}
 	replicateSuccess chan bool
 
 	// Observability
@@ -39,6 +39,11 @@ type State struct {
 type Args struct {
 	Node   *node.Node
 	Config *Config
+}
+
+type KV struct {
+	Key   string
+	Value string
 }
 
 // Configure is called by the orchestrator to start this node
@@ -67,8 +72,8 @@ func Configure(args any) *State {
 		log: node.Log,
 
 		// TODO(students): [Raft] Initialize any additional fields and add to State struct
-		proposedKV: pb.PutRequest{},
-		//????? do i need mutex? FIXME:
+		proposedKVs: make(map[KV]struct{}),
+		//FIXME:????? do i need mutex?
 		replicateSuccess: make(chan bool),
 	}
 
@@ -98,11 +103,12 @@ func (s *State) commitCListener() {
 				s.log.Printf("error unmarshalling commit: %v", err)
 				continue
 			}
-			if cmt.key == s.proposedKV.Key && cmt.value == s.proposedKV.Value {
+			kv := KV{Key: cmt.key, Value: cmt.value}
+			if _, ok := s.proposedKVs[kv]; ok && cmt.success {
 				s.replicateSuccess <- true
+				delete(s.proposedKVs, kv)
 			}
 			s.mu.Lock()
-			// FIXME: store [lastApplied + 1, commitIndex]
 			s.store[cmt.key] = cmt.value
 			s.mu.Unlock()
 		}
@@ -128,7 +134,7 @@ func (s *State) ReplicateKey(ctx context.Context, r *pb.PutRequest) (*pb.PutRepl
 	}
 	for i := 0; i < RETRIES; i++ {
 		s.proposeC <- kvR
-		s.proposedKV = *r
+		s.proposedKVs[KV{Key: r.Key, Value: r.Value}] = struct{}{}
 		select {
 		case <-s.replicateSuccess:
 			// unmarshal

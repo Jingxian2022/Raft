@@ -195,9 +195,6 @@ func (rn *RaftNode) Propose(
 	rn.log.Printf("received ProposalRequest from node %v", req.From)
 	rn.proposeC <- req.Data
 
-	if rn.state == CandidateState {
-		return nil, error(nil)
-	}
 	return &pb.ProposalReply{}, nil
 }
 
