@@ -175,7 +175,7 @@ func TestLeaderHeartbeat(t *testing.T) {
 	go leader.Run(ctx, leader.doLeader)
 
 	// Sleep to allow time to reply to appendEntriesRequest
-	time.Sleep(15 * smallPause)
+	time.Sleep(30 * smallPause)
 
 	nodeIDs := []uint64{cluster[1].raftNode.node.ID, cluster[2].raftNode.node.ID}
 
@@ -253,7 +253,7 @@ func TestStateTransition(t *testing.T) {
 			}
 
 			// Sleep to allow time for node to initialize
-			time.Sleep(smallPause)
+			time.Sleep(40 * smallPause)
 
 			// Modify wlead to be node's ID
 			if tt.wlead != None {

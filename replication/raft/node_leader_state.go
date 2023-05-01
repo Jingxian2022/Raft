@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	pb "modist/proto"
 	"sync"
+	"time"
 )
 
-func (rn *RaftNode) sendHeartbeat() {
+func (rn *RaftNode) sendHeartbeat(nextState chan stateFunction) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	followerNodes := rn.node.PeerNodes
 
+	// send noop entry
 	var wg0 sync.WaitGroup
 	wg0.Add(len(followerNodes))
 	for followerNodeID := range followerNodes {
@@ -25,53 +27,57 @@ func (rn *RaftNode) sendHeartbeat() {
 			rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
 			conn := rn.node.PeerConns[uint64(id)]
 			follower := pb.NewRaftRPCClient(conn)
-			_, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{
-				From:         rn.node.ID,
-				To:           uint64(id),
-				Term:         rn.GetCurrentTerm(),
-				PrevLogIndex: rn.LastLogIndex(),
-				PrevLogTerm:  rn.GetLog(rn.LastLogIndex()).GetTerm(),
+			reply, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{
+				// reply may indicate that follower is out of date
+				From: rn.node.ID,
+				To:   uint64(id),
+				Term: rn.GetCurrentTerm(),
 			})
 			if err != nil {
 				rn.log.Printf("error sending heartbeat to %d: %v", id, err)
 			}
-			rn.log.Printf("leader sent heartbeat trying")
+			if reply.GetSuccess() == false {
+				rn.log.Printf("follower %d is out of date", id)
+				rn.leader = 0
+				nextState <- rn.doFollower
+			}
 		}(followerNodeID)
 	}
 	wg0.Wait()
 
 	// send heartbeats to all servers periodically
-	// heartbeatTicker := time.NewTicker(rn.heartbeatTimeout)
-	// defer heartbeatTicker.Stop()
+	heartbeatTicker := time.NewTicker(rn.heartbeatTimeout)
+	defer heartbeatTicker.Stop()
 
-	// var wg sync.WaitGroup
-	// for {
-	// 	select {
-	// 	case <-heartbeatTicker.C:
-	// 		for followerNodeID := range followerNodes {
-	// 			wg.Add(1)
-	// 			go func(id uint64) {
-	// 				if id == rn.node.ID {
-	// 					wg.Done()
-	// 					return
-	// 				}
-	// 				defer wg.Done()
-	// 				rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
-	// 				conn := rn.node.PeerConns[uint64(id)]
-	// 				follower := pb.NewRaftRPCClient(conn)
-	// 				_, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{
-	// 					From: rn.node.ID,
-	// 					To:   uint64(id),
-	// 					Term: rn.GetCurrentTerm(),
-	// 				})
-	// 				if err != nil {
-	// 					rn.log.Printf("error sending heartbeat to %d: %v", id, err)
-	// 				}
-	// 			}(followerNodeID)
-	// 		}
-	// 		wg.Wait()
-	// 	}
-	// }
+	var wg sync.WaitGroup
+	for {
+		select {
+		case <-heartbeatTicker.C:
+			for followerNodeID := range followerNodes {
+				wg.Add(1)
+				go func(id uint64) {
+					if id == rn.node.ID {
+						wg.Done()
+						return
+					}
+					defer wg.Done()
+					rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
+					conn := rn.node.PeerConns[uint64(id)]
+					follower := pb.NewRaftRPCClient(conn)
+					_, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{
+						From:         rn.node.ID,
+						To:           uint64(id),
+						Term:         rn.GetCurrentTerm(),
+						LeaderCommit: rn.commitIndex,
+					})
+					if err != nil {
+						rn.log.Printf("error sending heartbeat to %d: %v", id, err)
+					}
+				}(followerNodeID)
+			}
+			wg.Wait()
+		}
+	}
 }
 
 func (rn *RaftNode) leaderListen(nextStateC chan stateFunction) {
@@ -109,7 +115,7 @@ func (rn *RaftNode) HandleProposeC(proposalmsg []byte, nextStateC chan stateFunc
 	json.Unmarshal(proposalmsg, &proposal)
 
 	append := 1
-	success := make(chan bool, 0)
+	// success := make(chan bool, 0)
 
 	go func() {
 		for {
@@ -117,10 +123,9 @@ func (rn *RaftNode) HandleProposeC(proposalmsg []byte, nextStateC chan stateFunc
 				rn.log.Printf("leader %d received majority of appendEntries", rn.node.ID)
 				// commit, then tell others to commit FIXME:should every node commit? or just who received
 				leaderCommit := &CommitMsg{
-					success:     true,
-					err:         nil,
-					lastApplied: rn.lastApplied,
-					commitIndex: rn.commitIndex,
+					key:     proposal.Key,
+					value:   proposal.Value,
+					success: true,
 				}
 				tmp, err := json.Marshal(leaderCommit)
 				if err != nil {
@@ -128,17 +133,24 @@ func (rn *RaftNode) HandleProposeC(proposalmsg []byte, nextStateC chan stateFunc
 				}
 				commitMsg := commit(tmp)
 				rn.commitC <- &commitMsg
-				success <- true
+				// success <- true //???
+
+				rn.commitIndex = rn.LastLogIndex()
 				return
 			}
+
 		}
 	}()
 
+	var wg sync.WaitGroup
+	wg.Add(len(rn.node.PeerNodes))
 	for followerNodeID := range rn.node.PeerNodes {
 		if followerNodeID == rn.node.ID {
+			wg.Done()
 			continue
 		}
 		go func(id uint64) {
+			defer wg.Done()
 			conn := rn.node.PeerConns[uint64(followerNodeID)]
 			follower := pb.NewRaftRPCClient(conn)
 
@@ -165,13 +177,14 @@ func (rn *RaftNode) HandleProposeC(proposalmsg []byte, nextStateC chan stateFunc
 			}
 		}(followerNodeID)
 	}
-
+	wg.Wait()
 }
 
 // doLeader implements the logic for a Raft node in the leader state.
 func (rn *RaftNode) doLeader() stateFunction {
 	rn.log.Printf("transitioning to leader state at term %d", rn.GetCurrentTerm())
 	rn.state = LeaderState
+	// rn.leader = rn.node.ID // FIXME:? or when appendEntries
 
 	// TODO(students): [Raft] Implement me!
 	// Hint: perform any initial work, and then consider what a node in the
@@ -182,7 +195,7 @@ func (rn *RaftNode) doLeader() stateFunction {
 	// defer cancel()
 	nextStateC := make(chan stateFunction, 1)
 
-	go rn.sendHeartbeat() //TODO: return when leader is not leader anymore!!!
+	go rn.sendHeartbeat(nextStateC) //TODO: return when leader is not leader anymore!!!
 	go rn.leaderListen(nextStateC)
 
 	for {

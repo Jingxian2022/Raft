@@ -3,7 +3,6 @@ package raft
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"math/rand"
 	pb "modist/proto"
 	"sync"
@@ -25,10 +24,8 @@ func (rn *RaftNode) candidateListen(nextStateC chan stateFunction) {
 			return
 		case <-rn.proposeC:
 			candidateCommit := &CommitMsg{
-				success:     false,
-				err:         errors.New("candidate cannot commit"),
-				lastApplied: rn.lastApplied,
-				commitIndex: rn.commitIndex,
+				key:   "",
+				value: "",
 			}
 			tmp, err := json.Marshal(candidateCommit)
 			if err != nil {

@@ -3,6 +3,7 @@ package raft
 import (
 	"context"
 	"encoding/json"
+	"math/rand"
 	pb "modist/proto"
 	"time"
 )
@@ -11,7 +12,9 @@ func (rn *RaftNode) followerListen(nextState chan stateFunction) {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	timeout := time.After(rn.heartbeatTimeout)
+	rand.Seed(time.Now().UnixNano())
+	randomNum := rand.Intn(2) + 1
+	timeout := time.After(rn.electionTimeout * time.Duration(randomNum))
 
 	for {
 		select {
@@ -50,12 +53,16 @@ func (rn *RaftNode) followerListen(nextState chan stateFunction) {
 			}
 
 		case entrymsg := <-rn.appendEntriesC:
-			timeout = time.After(rn.heartbeatTimeout)
+			rand.Seed(time.Now().UnixNano())
+			randomNum := rand.Intn(2) + 1
+			timeout = time.After(rn.electionTimeout * time.Duration(randomNum))
+
+			rn.leader = entrymsg.request.From
 			if entrymsg.request.Term < rn.GetCurrentTerm() {
 				// decline the request
 				entrymsg.reply <- pb.AppendEntriesReply{
 					From:    rn.node.ID,
-					To:      rn.node.ID,
+					To:      entrymsg.request.From,
 					Term:    rn.GetCurrentTerm(),
 					Success: false,
 				}
@@ -85,16 +92,20 @@ func (rn *RaftNode) handleFollowerProposal(proposeData []byte) {
 	conn := rn.node.PeerConns[rn.leader]
 	leader := pb.NewRaftRPCClient(conn)
 	// reply := make(chan *pb.ProposalReply)
+	// TODO: add for loop to handle timeout
 	_, err := leader.Propose(ctx, &pb.ProposalRequest{ // TODO: reply seems contains nothing...
 		From: rn.node.ID,
 		To:   rn.leader,
 		Data: proposeData})
-	// reply <- tmpreply
+	var promsg pb.PutRequest
+	json.Unmarshal(proposeData, promsg)
+
 	if err != nil {
 		rn.log.Printf("error sending propose to %d: %v", rn.leader, err)
 		tmp, err := json.Marshal(CommitMsg{
+			key:     promsg.Key,
+			value:   promsg.Value,
 			success: false,
-			err:     err,
 		})
 		if err != nil {
 			rn.log.Printf("error marshalling commit message: %v", err)
@@ -104,16 +115,16 @@ func (rn *RaftNode) handleFollowerProposal(proposeData []byte) {
 	} else {
 		rn.log.Printf("follower %d received proposalReply", rn.node.ID)
 		tmp, err := json.Marshal(CommitMsg{
-			success:     true,
-			err:         nil,
-			lastApplied: rn.lastApplied,
-			commitIndex: rn.commitIndex, // TODO: check
+			key:     promsg.Key,
+			value:   promsg.Value,
+			success: true,
 		})
 		if err != nil {
 			rn.log.Printf("error marshalling commit message: %v", err)
+		} else {
+			commitMsg := commit(tmp)
+			rn.commitC <- &commitMsg
 		}
-		commitMsg := commit(tmp)
-		rn.commitC <- &commitMsg
 	}
 }
 

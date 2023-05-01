@@ -92,18 +92,18 @@ func (s *State) commitCListener() {
 			if commit == nil {
 				return
 			}
-			c := pb.PutRequest{} // TODO: what should be the type of commit?
-			err := json.Unmarshal(*commit, &c)
+			cmt := CommitMsg{} // TODO: what should be the type of commit?
+			err := json.Unmarshal(*commit, &cmt)
 			if err != nil {
 				s.log.Printf("error unmarshalling commit: %v", err)
 				continue
 			}
-			if c.Key == s.proposedKV.Key && c.Value == s.proposedKV.Value {
+			if cmt.key == s.proposedKV.Key && cmt.value == s.proposedKV.Value {
 				s.replicateSuccess <- true
 			}
 			s.mu.Lock()
 			// FIXME: store [lastApplied + 1, commitIndex]
-			s.store[c.Key] = c.Value
+			s.store[cmt.key] = cmt.value
 			s.mu.Unlock()
 		}
 	}

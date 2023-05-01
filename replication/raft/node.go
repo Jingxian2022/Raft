@@ -40,10 +40,9 @@ type commit []byte
 const None uint64 = 0
 
 type CommitMsg struct {
-	success     bool
-	err         error
-	lastApplied uint64
-	commitIndex uint64
+	key     string
+	value   string
+	success bool
 }
 
 type RaftNode struct {
@@ -196,6 +195,9 @@ func (rn *RaftNode) Propose(
 	rn.log.Printf("received ProposalRequest from node %v", req.From)
 	rn.proposeC <- req.Data
 
+	if rn.state == CandidateState {
+		return nil, error(nil)
+	}
 	return &pb.ProposalReply{}, nil
 }
 
