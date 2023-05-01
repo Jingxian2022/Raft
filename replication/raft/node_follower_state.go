@@ -57,7 +57,6 @@ func (rn *RaftNode) followerListen(nextState chan stateFunction) {
 			randomNum := rand.Intn(2) + 1
 			timeout = time.After(rn.electionTimeout * time.Duration(randomNum))
 
-			rn.leader = entrymsg.request.From
 			if entrymsg.request.Term < rn.GetCurrentTerm() {
 				// decline the request
 				entrymsg.reply <- pb.AppendEntriesReply{
@@ -70,6 +69,7 @@ func (rn *RaftNode) followerListen(nextState chan stateFunction) {
 				// accept the request
 				// TODO: process the request
 				rn.SetCurrentTerm(entrymsg.request.Term)
+				rn.leader = entrymsg.request.From
 				rn.log.Printf("follower %d received appendEntriesC", rn.node.ID)
 				entrymsg.reply <- pb.AppendEntriesReply{
 					From:    rn.node.ID,

@@ -51,20 +51,23 @@ func (rn *RaftNode) sendHeartbeat(nextState chan stateFunction) {
 
 	var wg sync.WaitGroup
 	for {
+		if rn.state != LeaderState {
+			return
+		}
 		select {
 		case <-heartbeatTicker.C:
 			for followerNodeID := range followerNodes {
 				wg.Add(1)
 				go func(id uint64) {
-					if id == rn.node.ID {
-						wg.Done()
-						return
-					}
+					// if id == rn.node.ID {
+					// 	wg.Done()
+					// 	return
+					// }
 					defer wg.Done()
 					rn.log.Printf("leader %d is sending heartbeat to %d", rn.node.ID, id)
 					conn := rn.node.PeerConns[uint64(id)]
 					follower := pb.NewRaftRPCClient(conn)
-					_, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{
+					reply, err := follower.AppendEntries(ctx, &pb.AppendEntriesRequest{ //FIXME:
 						From:         rn.node.ID,
 						To:           uint64(id),
 						Term:         rn.GetCurrentTerm(),
@@ -72,6 +75,10 @@ func (rn *RaftNode) sendHeartbeat(nextState chan stateFunction) {
 					})
 					if err != nil {
 						rn.log.Printf("error sending heartbeat to %d: %v", id, err)
+					}
+					if !reply.GetSuccess() {
+						rn.log.Printf("follower %d is out of date", id)
+						nextState <- rn.doFollower
 					}
 				}(followerNodeID)
 			}
